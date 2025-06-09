@@ -742,9 +742,7 @@ export class ServerlessRagOnAws extends Stack {
     graphRagInferenceLambda.addToRolePolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: [
-        'neptune-graph:ExecuteQuery',
-        'neptune-graph:GetGraph',
-        'neptune-graph:ListGraphs',
+        'neptune-graph:*',
         'bedrock:InvokeModel',
         'bedrock:InvokeModelWithResponseStream',
         'bedrock:ListFoundationModels',
