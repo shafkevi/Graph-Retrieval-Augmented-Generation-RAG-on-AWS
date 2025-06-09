@@ -1,12 +1,12 @@
 import os
-import concurrent.futures
-from concurrent.futures import ThreadPoolExecutor
+#import concurrent.futures
+#from concurrent.futures import ThreadPoolExecutor
 # Monkey patch ProcessPoolExecutor to avoid multiprocessing issues
-original_ProcessPoolExecutor = concurrent.futures.ProcessPoolExecutor
-concurrent.futures.ProcessPoolExecutor = ThreadPoolExecutor
+#original_ProcessPoolExecutor = concurrent.futures.ProcessPoolExecutor
+#concurrent.futures.ProcessPoolExecutor = ThreadPoolExecutor
 # Also patch in the process module
-import concurrent.futures.process
-concurrent.futures.process.ProcessPoolExecutor = ThreadPoolExecutor
+#import concurrent.futures.process
+#concurrent.futures.process.ProcessPoolExecutor = ThreadPoolExecutor
 import boto3
 import urllib.parse
 import hashlib
@@ -245,10 +245,10 @@ def process_documents_with_graphrag(docs, cognito_sub, connection_id):
         #checkpoint_name = f"doc-checkpoint-{cognito_sub}-{abs(hash(str(docs)))}"
         #checkpoint_dir = os.path.join('/tmp', 'checkpoints')
         #os.makedirs(checkpoint_dir, exist_ok=True)
-        os.environ['TOKENIZERS_PARALLELISM'] = 'false'
-        os.environ['OMP_NUM_THREADS'] = '1'
-        os.environ['MKL_NUM_THREADS'] = '1'
-        os.environ['PYTHONHASHSEED'] = '0'
+        #os.environ['TOKENIZERS_PARALLELISM'] = 'false'
+        #os.environ['OMP_NUM_THREADS'] = '1'
+        #os.environ['MKL_NUM_THREADS'] = '1'
+        #os.environ['PYTHONHASHSEED'] = '0'
         decoded_sub = urllib.parse.unquote(cognito_sub).replace(':', '_').replace('-', '_')
         tenant_hash = hashlib.md5(cognito_sub.encode()).hexdigest()[:10].lower()
         print(f"Original cognito_sub: {cognito_sub}")
