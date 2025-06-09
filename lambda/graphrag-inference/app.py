@@ -1,12 +1,12 @@
 import os
 import concurrent.futures
-from concurrent.futures import ThreadPoolExecutor
+#from concurrent.futures import ThreadPoolExecutor
 # Monkey patch ProcessPoolExecutor to avoid multiprocessing issues
-original_ProcessPoolExecutor = concurrent.futures.ProcessPoolExecutor
-concurrent.futures.ProcessPoolExecutor = ThreadPoolExecutor
+#original_ProcessPoolExecutor = concurrent.futures.ProcessPoolExecutor
+#concurrent.futures.ProcessPoolExecutor = ThreadPoolExecutor
 # Also patch in the process module
-import concurrent.futures.process
-concurrent.futures.process.ProcessPoolExecutor = ThreadPoolExecutor
+#import concurrent.futures.process
+#concurrent.futures.process.ProcessPoolExecutor = ThreadPoolExecutor
 import json
 import jwt
 import hashlib
@@ -177,10 +177,6 @@ def lambda_handler(event, context):
             # 2. Context retrieval 
             # 3. LLM inference with retrieved context
             # 4. Final response generation
-            os.environ['TOKENIZERS_PARALLELISM'] = 'false'
-            os.environ['OMP_NUM_THREADS'] = '1'
-            os.environ['MKL_NUM_THREADS'] = '1'
-            os.environ['PYTHONHASHSEED'] = '0'
             response = query_engine.query(query)
             
             # Extract the response text

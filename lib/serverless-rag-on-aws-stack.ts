@@ -713,7 +713,7 @@ export class ServerlessRagOnAws extends Stack {
         RESPONSE_MODEL:"us.anthropic.claude-3-7-sonnet-20250219-v1:0",
         DEFAULT_INCLUDE_DOMAIN_LABELS:"False",
         ENABLE_CACHE:"False",
-        BUILD_NUM_WORKERS:"1",
+        //BUILD_NUM_WORKERS:"1",
         REGION: this.region, // Add this for the Python lambda
       }
     });
