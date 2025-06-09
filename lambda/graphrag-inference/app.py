@@ -13,14 +13,12 @@ import hashlib
 import boto3
 from graphrag_toolkit.lexical_graph.storage import VectorStoreFactory, GraphStoreFactory
 from graphrag_toolkit.lexical_graph import LexicalGraphQueryEngine
-from graphrag_toolkit.lexical_graph import set_logging_config
 #import nest_asyncio
 
 # Apply nest_asyncio for Lambda environment
 #nest_asyncio.apply()
 
 # Set logging configuration
-set_logging_config('INFO')
 
 # Set up environment variables
 aws_region = os.environ.get('AWS_REGION', 'us-east-1')
