@@ -53,7 +53,7 @@ def get_query_engine(cognito_sub):
     query_engine = LexicalGraphQueryEngine.for_traversal_based_search(
         graph_store, 
         vector_store,
-        tenant_id=tenant_hash,  # Use cognito_sub as tenant_id for multitenancy
+        tenant_id="6d6c269ad7",  # Use cognito_sub as tenant_id for multitenancy
         #response_model=RESPONSE_MODEL  # Use the configured response model
     )
     
