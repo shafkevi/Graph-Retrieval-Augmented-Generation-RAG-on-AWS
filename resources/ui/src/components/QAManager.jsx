@@ -21,6 +21,8 @@ import {
   Link, 
   Box,
   Alert,
+  Toggle,
+  Badge,
 } from '@cloudscape-design/components'
 
 import { BedrockClient, ListFoundationModelsCommand } from '@aws-sdk/client-bedrock';
@@ -34,6 +36,12 @@ export function QAManager({ inferenceURL, creds, region, appConfig }) {
   const [searchQuery, setSearchQuery] = useState(() => {
     const savedQuery = localStorage.getItem('searchQuery');
     return savedQuery || '';
+  });
+
+  // Add GraphRAG toggle state
+  const [isGraphRAG, setIsGraphRAG] = useState(() => {
+    const savedMode = localStorage.getItem('ragMode');
+    return savedMode === 'graphrag';
   });
 
   const [models, setModels] = useState([]);
@@ -51,8 +59,6 @@ export function QAManager({ inferenceURL, creds, region, appConfig }) {
   const [searching, setSearching] = useState();
   const [metadata, setMetadata] = useState([]);
   const [results, setResults] = useState([]);
-  // checks if any of the system prompts have been overridden
-  // if so, sets isModified to true, so that we can display a warning to the user
   const [systemPrompt, setSystemPrompt] = useState(() => {
     const savedPrompt = localStorage.getItem('parameterEditorState');
     if(savedPrompt){
@@ -70,6 +76,11 @@ export function QAManager({ inferenceURL, creds, region, appConfig }) {
     }
   });
 
+  // Save RAG mode to localStorage when it changes
+  useEffect(() => {
+    localStorage.setItem('ragMode', isGraphRAG ? 'graphrag' : 'regular');
+  }, [isGraphRAG]);
+
   // when searchQuery changes, store it into the local storage
   useEffect(() => {
       localStorage.setItem('searchQuery', searchQuery);
@@ -82,7 +93,9 @@ export function QAManager({ inferenceURL, creds, region, appConfig }) {
   }
 
   const getPresignedUrlAndRedirect = async (objectKey, page) => {
-  
+    // Determine which bucket to use based on RAG mode and metadata source
+    const bucketName = isGraphRAG ? appConfig.graphRagStorage.bucket_name : appConfig.storage.bucket_name;
+    
     const s3Client = new S3Client({
       region: appConfig.storage.aws_region,
       credentials: {
@@ -93,17 +106,17 @@ export function QAManager({ inferenceURL, creds, region, appConfig }) {
     });
   
     const command = new GetObjectCommand({
-      Bucket: appConfig.storage.bucket_name,
+      Bucket: bucketName,
       Key: objectKey,
     });
   
     try {
-      const signedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 }); // URL expires in 1 hour
+      const signedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
       if (page){
-        window.open(`${signedUrl}#page=${page}`, '_blank'); // Open in new tab
+        window.open(`${signedUrl}#page=${page}`, '_blank');
       }
       else {
-        window.open(signedUrl, '_blank'); // Open in new tab
+        window.open(signedUrl, '_blank');
       }
     } catch (error) {
       console.error('Error generating pre-signed URL', error);
@@ -128,7 +141,8 @@ export function QAManager({ inferenceURL, creds, region, appConfig }) {
       answer: '',
       date: new Date().toISOString(),
       checked: false,
-      model
+      model,
+      ragType: isGraphRAG ? 'graphrag' : 'regular' // Add RAG type to history
     }
     const updatedChatHistory = [newQAPair, ...chatHistory];
     localStorage.setItem('chat_history', JSON.stringify(updatedChatHistory));
@@ -140,7 +154,7 @@ export function QAManager({ inferenceURL, creds, region, appConfig }) {
     lastMessage.answer = answer;
     lastMessage.checked = true;
     chatHistory.unshift(lastMessage);
-    localStorage.setItem('chat_history', JSON.stringify(chatHistory));
+    localStorage.setItem('chat_history', JSON.stringify(lastMessage));
   }
 
   const getHistoryForConverseAPI = () => {
@@ -159,8 +173,6 @@ export function QAManager({ inferenceURL, creds, region, appConfig }) {
   }
 
   const getData = async (streaming = true) => {
-
-    
     clearResponse();
     prependQuestionToHistory(searchQuery);
     setSearching(true);
@@ -172,14 +184,15 @@ export function QAManager({ inferenceURL, creds, region, appConfig }) {
       sha256: Sha256
     });
 
+    // Choose endpoint based on RAG mode
+    const selectedInferenceURL = isGraphRAG ? appConfig.graphRagInferenceURL : inferenceURL;
+    
     let apiUrl;
-    //TODO: do we need to clean this up?
     if (streaming) {
-      apiUrl = new URL(inferenceURL);
+      apiUrl = new URL(selectedInferenceURL);
     }
     else {
-      // TODO:  hange this to sync endpoint?
-      apiUrl = new URL(inferenceURL);
+      apiUrl = new URL(selectedInferenceURL);
     }
 
     const promptOverride = getPromptOverrideObject(systemPrompt);
@@ -187,13 +200,14 @@ export function QAManager({ inferenceURL, creds, region, appConfig }) {
     const requestBody = {
       query: searchQuery,
       promptOverride,
-      strategy: "rag",
+      strategy: isGraphRAG ? "graphrag" : "rag",
       model: model,
       idToken: creds.idToken.toString(),
       history: getHistoryForConverseAPI()
     };
 
-    console.log(requestBody);
+    console.log('Request body:', requestBody);
+    console.log('Using endpoint:', selectedInferenceURL);
 
     try {
       const signed = await sigv4.sign({
@@ -226,15 +240,15 @@ export function QAManager({ inferenceURL, creds, region, appConfig }) {
 
     } catch (error) {
       console.error("Error streaming data: ", error);
+      setSearching(false);
     }
   };
 
-  // whenever results changes, add its content into the last pair of questions and anwers
+  // Rest of your existing useEffect and other functions remain the same...
   useEffect(() => {
     if (results?.length > 0) {
       setResponseToLastQuestionInChatHistory(results?.join(""));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [results]);
 
   const getModelsFromBedrock = async () => {
@@ -292,6 +306,30 @@ export function QAManager({ inferenceURL, creds, region, appConfig }) {
     }>
       <SpaceBetween direction="vertical" size="m">
         <FormField
+          label="RAG Mode"
+          description="Choose between regular RAG (vector search) and GraphRAG (knowledge graph traversal)"
+        >
+          <Box>
+            <Toggle
+              onChange={({ detail }) => setIsGraphRAG(detail.checked)}
+              checked={isGraphRAG}
+            >
+              <Box display="inline">
+                {isGraphRAG ? (
+                  <>
+                    <Badge color="blue">GraphRAG</Badge> - Knowledge Graph & Vector Search
+                  </>
+                ) : (
+                  <>
+                    <Badge color="green">Regular RAG</Badge> - Vector Search Only
+                  </>
+                )}
+              </Box>
+            </Toggle>
+          </Box>
+        </FormField>
+
+        <FormField
           label="LLM Model"
         >
           <Select
@@ -304,6 +342,7 @@ export function QAManager({ inferenceURL, creds, region, appConfig }) {
             options={models}
           />
         </FormField>
+
         { 
           systemPrompt?.isModified 
             && 
@@ -311,55 +350,72 @@ export function QAManager({ inferenceURL, creds, region, appConfig }) {
             You have modified the system prompt. You can switch back to the default prompt by navigating to <Link onFollow={() => navigate("/Settings")}>System Prompt Settings</Link>
           </Alert>
         }
+
         {
           chatHistory.some( item => item.checked) &&
           <Alert statusIconAriaLabel="Info">
             Some of your Chat History will be forwarded to the inference endpoint. You can manage your ChatHistory by navigating to <Link onFollow={() => navigate("/ChatHistory")}>Chat&nbsp;History</Link>
           </Alert>
         }
-        <Textarea onChange={({ detail }) => setSearchQuery(detail.value)} value={searchQuery}></Textarea>
-      <div>
-      </div>
-      <div>
-        <Button disabled={searchQuery.length===0 && model !== 'none'} variant="primary" iconName="search" loading={searching} onClick={() => getData(true)}>Submit Question</Button>
-      </div>
-      <div className="qa_container">
-        <div>
-          <b>Question:</b> {searchQuery}
-        </div>
-        <div>
-          <b>Response:</b> 
 
-          <Markdown
-            rehypePlugins={[rehypeRaw]}
-            children={results.join('')}
-            components={{
-              code(props) {
-                let {children, className, node, ...rest} = props
-                className = className && className.toLowerCase();
-                const match = /language-(\w+)/.exec(className || '');
-                return match ? (
-                  <SyntaxHighlighter
-                    {...rest}
-                    PreTag="div"
-                    children={String(children).replace(/\n$/, '')}
-                    language={match[1]}
-                    style={darkMarkdown}
-                  />
-                ) : (
-                  <code {...rest} className={className}>
-                    {children}
-                  </code>
-                )
-              }
-            }}
-          />
-          
-        </div>
+        {
+          isGraphRAG &&
+          <Alert statusIconAriaLabel="Info">
+            GraphRAG mode uses both knowledge graph traversal and vector search to provide more comprehensive answers. Make sure you have uploaded documents to the GraphRAG collection via the <Link onFollow={() => navigate("/Documents")}>Documents</Link> page.
+          </Alert>
+        }
+
+        <Textarea onChange={({ detail }) => setSearchQuery(detail.value)} value={searchQuery}></Textarea>
+        
         <div>
-          <b>Metadata:</b> {metadata.map((x) => <MetadataItem key={x.metadata.id} metadataItem={x} signer={getPresignedUrlAndRedirect} />)}
+          <Button 
+            disabled={searchQuery.length===0 && model !== 'none'} 
+            variant="primary" 
+            iconName="search" 
+            loading={searching} 
+            onClick={() => getData(true)}
+          >
+            {isGraphRAG ? 'Submit GraphRAG Question' : 'Submit Question'}
+          </Button>
         </div>
-      </div>
+
+        <div className="qa_container">
+          <div>
+            <b>Question:</b> {searchQuery}
+          </div>
+          <div>
+            <b>Response ({isGraphRAG ? 'GraphRAG' : 'Regular RAG'}):</b> 
+
+            <Markdown
+              rehypePlugins={[rehypeRaw]}
+              children={results.join('')}
+              components={{
+                code(props) {
+                  let {children, className, node, ...rest} = props
+                  className = className && className.toLowerCase();
+                  const match = /language-(\w+)/.exec(className || '');
+                  return match ? (
+                    <SyntaxHighlighter
+                      {...rest}
+                      PreTag="div"
+                      children={String(children).replace(/\n$/, '')}
+                      language={match[1]}
+                      style={darkMarkdown}
+                    />
+                  ) : (
+                    <code {...rest} className={className}>
+                      {children}
+                    </code>
+                  )
+                }
+              }}
+            />
+            
+          </div>
+          <div>
+            <b>Metadata:</b> {metadata.map((x) => <MetadataItem key={x.metadata.id || x.metadata.source} metadataItem={x} signer={getPresignedUrlAndRedirect} isGraphRAG={isGraphRAG} />)}
+          </div>
+        </div>
       </SpaceBetween>
     </Container>
   );
@@ -375,13 +431,31 @@ QAManager.propTypes = {
   appConfig: PropTypes.object.isRequired,
 };
 
-function MetadataItem({metadataItem, signer}){
-  const {metadata: {id, source, page},  content} = metadataItem;
+function MetadataItem({metadataItem, signer, isGraphRAG}){
+  const {metadata, content} = metadataItem;
+  
+  // Handle different metadata structures for regular RAG vs GraphRAG
+  if (isGraphRAG && metadata.type === 'graphrag') {
+    return (
+      <div>
+        <div><b>Type:</b> <Badge color="blue">Knowledge Graph</Badge></div>
+        <div><b>Source:</b> {metadata.source}</div>
+        {metadata.entities && <div><b>Entities:</b> {metadata.entities}</div>}
+        {metadata.relationships && <div><b>Relationships:</b> {metadata.relationships}</div>}
+        {metadata.tenant_id && <div><b>Tenant:</b> {metadata.tenant_id}</div>}
+        <div><b>Content:</b> <ExpandableText>{content}</ExpandableText></div>
+      </div>
+    );
+  }
+
+  // Regular RAG metadata (existing logic)
+  const {id, source, page} = metadata;
   const cleanSource = source.replace('/tmp/', '');
   const displaySource = source.split('/').pop();
 
   return (
     <div>
+      <div><b>Type:</b> <Badge color="green">Vector Search</Badge></div>
       <div><b>ID:</b> {id}</div>
       <div><b>Source:</b> <Link onFollow={() => `${signer(cleanSource, parseInt(page)+1)}#page=${page}`}>{displaySource}</Link></div>
       <div><b>Page:</b> {page}</div>
@@ -390,22 +464,18 @@ function MetadataItem({metadataItem, signer}){
   );
 }
 
-// gneerate props types for metadataItem
 MetadataItem.propTypes = {
   metadataItem: PropTypes.shape({
-    metadata: PropTypes.shape({
-      id: PropTypes.string,
-      source: PropTypes.string,
-      page: PropTypes.string
-    }),
+    metadata: PropTypes.object,
     content: PropTypes.string
   }),
-  signer: PropTypes.func.isRequired
+  signer: PropTypes.func.isRequired,
+  isGraphRAG: PropTypes.bool
 }
 
 const ExpandableText = ({ children }) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const text = children;
+  const text = children || '';
   const previewText = text.slice(0, 140);
   
   const handleToggle = () => {
@@ -425,4 +495,8 @@ const ExpandableText = ({ children }) => {
       )}
     </Box>
   );
+};
+
+ExpandableText.propTypes = {
+  children: PropTypes.string
 };

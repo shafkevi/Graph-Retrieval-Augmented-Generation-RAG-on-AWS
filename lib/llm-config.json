@@ -1,20 +1,20 @@
 {
     "us-west-2":{
         "embedding":{
-            "model":"amazon.titan-embed-text-v1",
-            "size":1536
+            "model":"cohere.embed-english-v3",
+            "size":1024
         }
     },
     "us-east-1":{
         "embedding":{
-            "model":"amazon.titan-embed-text-v1",
-            "size":1536
+            "model":"cohere.embed-english-v3",
+            "size":1024
         }
     },
     "us-east-2":{
         "embedding":{
-            "model":"amazon.titan-embed-text-v1",
-            "size":1536
+            "model":"cohere.embed-english-v3",
+            "size":1024
         }
     },
     "eu-central-1":{

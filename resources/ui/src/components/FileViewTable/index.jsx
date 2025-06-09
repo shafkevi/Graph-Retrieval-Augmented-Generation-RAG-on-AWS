@@ -15,9 +15,11 @@ import {
   Alert,
   Hotspot,
   FormField,
-  Modal
+  Modal,
+  Badge
 } from '@cloudscape-design/components';
 import { CustomStorageManager } from "../CustomStorageManager";
+import { CustomFileUploader } from "../CustomFileUploader"; // Add this import
 import { columnDefinitions, getMatchesCountText, paginationLabels, collectionPreferencesProps } from './table-config';
 
 function EmptyState({ title, subtitle, action }) {
@@ -40,10 +42,26 @@ EmptyState.propTypes = {
   action: PropTypes.node.isRequired,
 };
 
-export function FileViewTable({tableItems, loading, loader, download, deleteFiles, creds}) {
+export function FileViewTable({
+  tableItems, 
+  loading, 
+  loader, 
+  download, 
+  deleteFiles, 
+  creds, 
+  acceptedFileTypes = ['.pdf'], 
+  bucketConfig,
+  ragMode = "regular"
+}) {
   const [modalVisible, setModalVisible] = useState(false);
+  const [preferences, setPreferences] = useState({ 
+    pageSize: 10, 
+    visibleContent: ['file', 'last_modified', 'size'] 
+  });
 
-  const [preferences, setPreferences] = useState({ pageSize: 10, visibleContent: ['file', 'last_modified', 'size'] });
+  // Determine if this is GraphRAG mode
+  const isGraphRAG = ragMode === "graphrag";
+
   const { items, actions, filteredItemsCount, collectionProps, filterProps, paginationProps } = useCollection(
     tableItems,
     {
@@ -68,13 +86,25 @@ export function FileViewTable({tableItems, loading, loader, download, deleteFile
 
   const [deleting, setDeleting] = useState(false);
 
-  useEffect(() => {loader()}, [creds]);
+  // FIXED: Remove loader from dependency array and use a flag instead
+  const [hasLoaded, setHasLoaded] = useState(false);
+
+  useEffect(() => {
+    if (creds.accessKeyId && !hasLoaded) {
+      loader();
+      setHasLoaded(true);
+    }
+  }, [creds.accessKeyId, hasLoaded]); // Removed loader from dependencies
+
+  // Reset hasLoaded when creds change
+  useEffect(() => {
+    setHasLoaded(false);
+  }, [creds.identityId]);
 
   const closeModal = () => {
     setModalVisible(false);
     loader();
   }
-
 
   return (
     <div>  
@@ -82,7 +112,7 @@ export function FileViewTable({tableItems, loading, loader, download, deleteFile
         onDismiss={() => setModalVisible(false)}
         visible={modalVisible}
         closeAriaLabel="Close modal"
-        header="Upload file"
+        header={`Upload ${isGraphRAG ? 'GraphRAG' : 'Regular RAG'} Documents`}
         footer={
           <Box float="right">
             <SpaceBetween direction="horizontal" size="xs">
@@ -93,17 +123,33 @@ export function FileViewTable({tableItems, loading, loader, download, deleteFile
         }
       >
         <FormField
-      >
-        <CustomStorageManager
-            acceptedFileTypes={['.pdf']}
-            path={() => `private/${creds.identityId}/`}
-            maxFileCount={1}
-            maxFileSize={10000000}
-            uploadedCallback={closeModal}
-        />
-      </FormField>
+          description={
+            isGraphRAG 
+              ? "GraphRAG supports both PDF and TXT files for knowledge graph construction"
+              : "Regular RAG supports PDF files for vector search"
+          }
+        >
+          {isGraphRAG ? (
+            <CustomFileUploader
+              acceptedFileTypes={acceptedFileTypes}
+              bucketConfig={bucketConfig}
+              creds={creds}
+              onUploadComplete={closeModal}
+              isGraphRAG={true}
+            />
+          ) : (
+            <CustomStorageManager
+              acceptedFileTypes={acceptedFileTypes}
+              path={() => `private/${creds.identityId}/`}
+              maxFileCount={1}
+              maxFileSize={10000000}
+              uploadedCallback={closeModal}
+            />
+          )}
+        </FormField>
         
       </Modal>}
+
       {deleting && selectedItems.length > 0 && <Alert
       type="warning"
       statusIconAriaLabel="Warning"
@@ -117,6 +163,7 @@ export function FileViewTable({tableItems, loading, loader, download, deleteFile
     >
       {`${selectedItems.length > 1 ? 'These files' : 'This file'} will be permanently deleted.`}
     </Alert>}
+
     <Hotspot side="left" direction="bottom" hotspotId='knowledge-base-table'>
     <Table
       {...collectionProps}
@@ -130,9 +177,14 @@ export function FileViewTable({tableItems, loading, loader, download, deleteFile
               direction="horizontal"
               size="xs"
             >
-              <Button iconName={"upload"} variant="normal" onClick={() => setModalVisible(true)}>Upload files</Button>
+              <Button 
+                iconName={"upload"} 
+                variant="normal" 
+                onClick={() => setModalVisible(true)}
+              >
+                Upload {isGraphRAG ? 'GraphRAG ' : ''}Files
+              </Button>
               <Hotspot hotspotId='knowledge-base-table-delete' side="left">
-              
                 <Button disabled={(deleting || loading || selectedItems.length === 0)} onClick={() => setDeleting(true)} >
                     <Icon name="remove"></Icon>
                 </Button>
@@ -144,7 +196,13 @@ export function FileViewTable({tableItems, loading, loader, download, deleteFile
             </SpaceBetween>
           }
         >
-          Documents
+          <Box display="inline">
+            {isGraphRAG ? (
+              <><Badge color="blue">GraphRAG</Badge> Documents</>
+            ) : (
+              <><Badge color="green">Regular RAG</Badge> Documents</>
+            )}
+          </Box>
         </Header>
       }
       columnDefinitions={columnDefinitions(download)}
@@ -174,13 +232,16 @@ export function FileViewTable({tableItems, loading, loader, download, deleteFile
 }
 
 FileViewTable.propTypes = {
-  tableItems: PropTypes.arrayOf(PropTypes.shape({
-    value: PropTypes.string,
-    label: PropTypes.string,
-  })),
+  tableItems: PropTypes.arrayOf(PropTypes.object),
   loading: PropTypes.bool.isRequired,
   loader: PropTypes.func.isRequired,
   download: PropTypes.func.isRequired,
   deleteFiles: PropTypes.func.isRequired,
-  creds: PropTypes.object.isRequired
+  creds: PropTypes.object.isRequired,
+  acceptedFileTypes: PropTypes.arrayOf(PropTypes.string),
+  bucketConfig: PropTypes.shape({
+    bucketName: PropTypes.string.isRequired,
+    region: PropTypes.string.isRequired
+  }),
+  ragMode: PropTypes.oneOf(['regular', 'graphrag']),
 };

@@ -20,6 +20,7 @@ import {
   CfnOutput,
   aws_lambda_nodejs as node,
   DockerImage,
+  aws_neptunegraph as neptune,
   aws_ssm as ssm,
 } from 'aws-cdk-lib';
 
@@ -107,6 +108,97 @@ export class ServerlessRagOnAws extends Stack {
       s3.EventType.OBJECT_REMOVED, 
       new s3Notifications.SqsDestination(queue),
       {suffix: ".PDF"}
+    );
+    // Add this after the existing documentsBucket and lanceDbVectorBucket section
+
+    // ==================== GRAPHRAG WORKFLOW INFRASTRUCTURE ====================
+
+    // Neptune Analytics Graph for GraphRAG
+    const neptuneAnalyticsGraph = new neptune.CfnGraph(this, 'GraphRagNeptuneGraph', {
+      graphName: `serverlessrag-graph-${this.node.id.toLowerCase()}`,
+      provisionedMemory: 128, // Minimum size, adjust as needed
+      publicConnectivity: true,
+      vectorSearchConfiguration: {
+        vectorSearchDimension: embedding.size, // Use the same embedding size as regular RAG
+      },
+      deletionProtection: false, // Set to true for production
+      tags: [
+        {
+          key: 'Purpose',
+          value: 'GraphRAG'
+        }
+      ]
+    });
+
+    // S3 bucket for GraphRAG documents
+    const graphRagDocumentsBucket = new s3.Bucket(this, "graphrag-documents-bucket", {
+      versioned: true,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      removalPolicy: RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
+    });
+
+    // SQS infrastructure for GraphRAG document processing
+    const graphRagDlq = new sqs.Queue(this, 'GraphRagDeadLetterQueue', {
+      visibilityTimeout: Duration.seconds(300)
+    });
+
+    const graphRagQueue = new sqs.Queue(this, 'GraphRagDocumentProcessingQueue', {
+      visibilityTimeout: Duration.seconds(900), // Longer timeout for graph processing
+      deadLetterQueue: {
+        maxReceiveCount: 3, // Fewer retries due to complexity
+        queue: graphRagDlq
+      },
+    });
+    // S3 event notifications for GraphRAG documents - UPDATED to support PDF and TXT
+    graphRagDocumentsBucket.addEventNotification(
+      s3.EventType.OBJECT_CREATED, 
+      new s3Notifications.SqsDestination(graphRagQueue),
+      {suffix: ".pdf"}
+    );
+
+    graphRagDocumentsBucket.addEventNotification(
+      s3.EventType.OBJECT_CREATED, 
+      new s3Notifications.SqsDestination(graphRagQueue),
+      {suffix: ".PDF"}
+    );
+
+    // Add support for TXT files
+    graphRagDocumentsBucket.addEventNotification(
+      s3.EventType.OBJECT_CREATED, 
+      new s3Notifications.SqsDestination(graphRagQueue),
+      {suffix: ".txt"}
+    );
+
+    graphRagDocumentsBucket.addEventNotification(
+      s3.EventType.OBJECT_CREATED, 
+      new s3Notifications.SqsDestination(graphRagQueue),
+      {suffix: ".TXT"}
+    );
+
+    // Delete events for both PDF and TXT
+    graphRagDocumentsBucket.addEventNotification(
+      s3.EventType.OBJECT_REMOVED, 
+      new s3Notifications.SqsDestination(graphRagQueue),
+      {suffix: ".pdf"}
+    );
+
+    graphRagDocumentsBucket.addEventNotification(
+      s3.EventType.OBJECT_REMOVED, 
+      new s3Notifications.SqsDestination(graphRagQueue),
+      {suffix: ".PDF"}
+    );
+
+    graphRagDocumentsBucket.addEventNotification(
+      s3.EventType.OBJECT_REMOVED, 
+      new s3Notifications.SqsDestination(graphRagQueue),
+      {suffix: ".txt"}
+    );
+
+    graphRagDocumentsBucket.addEventNotification(
+      s3.EventType.OBJECT_REMOVED, 
+      new s3Notifications.SqsDestination(graphRagQueue),
+      {suffix: ".TXT"}
     );
 
     /* dynamodb table for document registry */
@@ -210,6 +302,16 @@ export class ServerlessRagOnAws extends Stack {
       allowedHeaders: ['*']
     });
 
+    // Add CORS rules for GraphRAG documents bucket
+    graphRagDocumentsBucket.addCorsRule({
+      allowedMethods: [s3.HttpMethods.GET, s3.HttpMethods.HEAD, s3.HttpMethods.PUT, s3.HttpMethods.POST, s3.HttpMethods.DELETE],
+      allowedOrigins: [
+        `https://${webDistribution.distributionDomainName}`,
+        'http://localhost:5173',
+        'https://localhost:5173'
+      ],
+      allowedHeaders: ['*']
+    });
 
     // Cognito auth stack
     const frontendAuth = new AmplifyAuth(this, 'frontendAuth', {
@@ -450,6 +552,28 @@ export class ServerlessRagOnAws extends Stack {
         ]
       })
     );
+    // ==================== FRONTEND USER PERMISSIONS FOR GRAPHRAG ====================
+
+    // Add policy for authenticated users to interact with GraphRAG documents bucket
+    frontendAuth.resources.authenticatedUserIamRole.attachInlinePolicy(
+      new iam.Policy(this, 'authenticatedUserIamRolePolicy-s3-graphrag-ingest', {
+        statements: [
+          new iam.PolicyStatement({
+            actions: [
+              "s3:PutObject",
+              "s3:GetObject",
+              "s3:ListBucket",
+              "s3:DeleteObject"
+            ],
+            resources: [
+              graphRagDocumentsBucket.bucketArn,
+              graphRagDocumentsBucket.arnForObjects("private/${cognito-identity.amazonaws.com:sub}/*")
+            ]
+          })
+        ]
+      })
+    );
+
 
 
     // Create Inference Lambda function
@@ -526,6 +650,110 @@ export class ServerlessRagOnAws extends Stack {
       resources: [ lanceDbVectorBucket.bucketArn],
     }));
 
+
+    // ==================== GRAPHRAG LAMBDA FUNCTIONS ====================
+
+    // Lambda function for extracting and building knowledge graph
+    const extractAndBuildKnowledgeGraphLambda = new lambda.DockerImageFunction(this, "extractAndBuildKnowledgeGraphLambda", {
+      code: lambda.DockerImageCode.fromImageAsset('./lambda/graphrag-processor', {
+        cmd: ["app.lambda_handler"],
+        file: 'Dockerfile',
+      }),
+      architecture: lambda.Architecture.X86_64,
+      memorySize: 3008, // Higher memory for graph processing
+      reservedConcurrentExecutions: 2, // Allow slightly more concurrency for graph operations
+      timeout: Duration.minutes(15), // Longer timeout for complex graph operations
+      environment: {
+        WEBSOCKET_ENDPOINT: `wss://${webSocketApi.apiId}.execute-api.${this.region}.amazonaws.com/${deployment.stageName}`,
+        DYNAMODB_WEBSOCKET_STATE_TABLE: websocketStateTable.tableName,
+        SQS_QUEUE_URL: graphRagQueue.queueUrl,
+        DYNAMODB_DOCUMENT_REGISTRY_TABLE: documentRegistryTable.tableName,
+        DYNAMODB_MD5_BY_S3_PATH_INDEX: documentRegistryTableIndexOnS3Path,
+        NEPTUNE_GRAPH_ID: neptuneAnalyticsGraph.attrGraphId,
+        NEPTUNE_GRAPH_ENDPOINT: neptuneAnalyticsGraph.attrEndpoint,
+        GRAPHRAG_DOCUMENTS_BUCKET: graphRagDocumentsBucket.bucketName,
+        EMBEDDING_MODEL: embedding.model,
+        EMBEDDING_SIZE: `${embedding.size}`,
+        PROCESSING_TYPE: 'GRAPHRAG',
+        EXTRACTION_MODEL:"us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+        RESPONSE_MODEL:"us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+        DEFAULT_INCLUDE_DOMAIN_LABELS:"False",
+        BUILD_NUM_WORKERS:"1",
+        ENABLE_CACHE:"False"
+
+      },
+    });
+
+    // Event source mapping for GraphRAG SQS queue
+    const graphRagSqsEventSource = new lambdaEventSources.SqsEventSource(graphRagQueue, {
+      batchSize: 3 // Smaller batch size for complex processing
+    });
+
+    extractAndBuildKnowledgeGraphLambda.addEventSource(graphRagSqsEventSource);
+
+// GraphRAG Inference Lambda function - UPDATED TO PYTHON DOCKER
+    const graphRagInferenceLambda = new lambda.DockerImageFunction(this, 'graphRagInferenceLambda', {
+      code: lambda.DockerImageCode.fromImageAsset('./lambda/graphrag-inference', {
+        cmd: ["app.lambda_handler"],  // Changed from "index.handler" to "app.lambda_handler"
+        file: 'Dockerfile',
+      }),
+      architecture: lambda.Architecture.X86_64,
+      memorySize: 2048,
+      timeout: Duration.seconds(300),
+      environment: {
+        NEPTUNE_GRAPH_ID: neptuneAnalyticsGraph.attrGraphId,
+        NEPTUNE_GRAPH_ENDPOINT: neptuneAnalyticsGraph.attrEndpoint,
+        stackName: this.stackName,
+        USER_POOL_ID: frontendAuth.resources.userPool.userPoolId,
+        IDENTITY_POOL_ID: frontendAuth.resources.cfnResources.cfnIdentityPool.ref,
+        EMBEDDING_MODEL: embedding.model,
+        EMBEDDING_SIZE: `${embedding.size}`,
+        PROCESSING_TYPE: 'GRAPHRAG',
+        EXTRACTION_MODEL:"us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+        RESPONSE_MODEL:"us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+        DEFAULT_INCLUDE_DOMAIN_LABELS:"False",
+        ENABLE_CACHE:"False",
+
+        REGION: this.region, // Add this for the Python lambda
+      }
+    });
+
+    // ==================== GRAPHRAG IAM PERMISSIONS ====================
+
+    // Permissions for extract_and_build_knowledge_graph_lambda
+    documentRegistryTable.grantReadWriteData(extractAndBuildKnowledgeGraphLambda);
+    websocketStateTable.grantReadWriteData(extractAndBuildKnowledgeGraphLambda);
+    graphRagQueue.grantConsumeMessages(extractAndBuildKnowledgeGraphLambda);
+    graphRagDocumentsBucket.grantReadWrite(extractAndBuildKnowledgeGraphLambda);
+
+    // Neptune Analytics permissions for knowledge graph lambda
+    extractAndBuildKnowledgeGraphLambda.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'neptune-graph:*', // Full Neptune Analytics access - restrict as needed
+        'bedrock:InvokeModel',
+        'bedrock:InvokeModelWithResponseStream',
+        'execute-api:ManageConnections',
+      ],
+      resources: ['*'],
+    }));
+
+    // Permissions for GraphRAG inference lambda
+    graphRagInferenceLambda.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'neptune-graph:ExecuteQuery',
+        'neptune-graph:GetGraph',
+        'neptune-graph:ListGraphs',
+        'bedrock:InvokeModel',
+        'bedrock:InvokeModelWithResponseStream',
+        'bedrock:ListFoundationModels',
+        'ssm:GetParameter',
+        'cognito-identity:GetId',
+        'cognito-identity:GetCredentialsForIdentity',
+      ],
+      resources: ['*'],
+    }));    
     // Create Lambda function URL
     const inferenceUrl = new lambda.FunctionUrl(this, 'FunctionUrl', {
       function: lambdaInferenceFunction,
@@ -539,6 +767,36 @@ export class ServerlessRagOnAws extends Stack {
       },
       invokeMode: lambda.InvokeMode.RESPONSE_STREAM,
     });
+
+        // ==================== GRAPHRAG FUNCTION URLS ====================
+
+    // Create Lambda function URL for GraphRAG inference
+    const graphRagInferenceUrl = new lambda.FunctionUrl(this, 'GraphRagFunctionUrl', {
+      function: graphRagInferenceLambda,
+      authType: lambda.FunctionUrlAuthType.AWS_IAM,
+      cors: {
+        allowCredentials: true,
+        allowedHeaders: ['x-amz-security-token', 'x-amz-date', 'x-amz-content-sha256', 'referer', 'content-type', 'accept', 'authorization'],
+        allowedMethods: [lambda.HttpMethod.ALL],
+        allowedOrigins: ['*'],
+        maxAge: Duration.seconds(0),
+      },
+      invokeMode: lambda.InvokeMode.RESPONSE_STREAM,
+    });
+
+    // Add policy for authenticated users to invoke GraphRAG inference function
+    frontendAuth.resources.authenticatedUserIamRole.attachInlinePolicy(
+      new iam.Policy(this, 'authenticatedUserIamRolePolicy-lambda-graphrag-inference', {
+        statements: [
+          new iam.PolicyStatement({
+            actions: [
+              "lambda:InvokeFunctionUrl"
+            ],
+            resources: [graphRagInferenceLambda.functionArn]
+          })
+        ]
+      })
+    );
 
     // add policy for an authenticated user to invoke the inference function via function url
     frontendAuth.resources.authenticatedUserIamRole.attachInlinePolicy(
@@ -554,15 +812,17 @@ export class ServerlessRagOnAws extends Stack {
       })
     );
 
-    // generate configuration file for the front-end
+// Update the configuration file for the front-end 
     const configFileBody = {
       inferenceURL: inferenceUrl.url,
+      graphRagInferenceURL: graphRagInferenceUrl.url, // New GraphRAG inference endpoint
       websocketURL: `wss://${webSocketApi.apiId}.execute-api.${this.region}.amazonaws.com/${deployment.stageName}`,
       websocketStateTable: websocketStateTable.tableName,
       region: this.region,
-      // this must be the document bucket becuase this configuration
+      // this must be the document bucket because this configuration
       // is for the Amplify StorageManager component
       bucketName: documentsBucket.bucketName,
+      graphRagBucketName: graphRagDocumentsBucket.bucketName, // New GraphRAG bucket
       auth: {
         user_pool_id: userPoolId,
         aws_region: this.region,
@@ -584,6 +844,10 @@ export class ServerlessRagOnAws extends Stack {
       storage: {
         // this must be the document bucket again
         bucket_name: documentsBucket.bucketName,
+        aws_region: this.region
+      },
+      graphRagStorage: { // New GraphRAG storage configuration
+        bucket_name: graphRagDocumentsBucket.bucketName,
         aws_region: this.region
       }
     };
@@ -646,6 +910,22 @@ export class ServerlessRagOnAws extends Stack {
       value: `s3://${frontendBucket.bucketName}/appconfig.json`,
     });
 
+    // Add these new outputs after existing CfnOutput declarations
+    new CfnOutput(this, "GraphRagInferenceURL", {
+      value: graphRagInferenceUrl.url,
+    });
+
+    new CfnOutput(this, "GraphRagDocumentsBucket", {
+      value: graphRagDocumentsBucket.bucketName,
+    });
+
+    new CfnOutput(this, "NeptuneAnalyticsGraphId", {
+      value: neptuneAnalyticsGraph.attrGraphId,
+    });
+
+    new CfnOutput(this, "NeptuneAnalyticsGraphEndpoint", {
+      value: neptuneAnalyticsGraph.attrEndpoint,
+    });
   }
 
   private addLambdaPermission(id: string, func: lambda.Function, api: apigw.WebSocketApi, routeKey: string) {

@@ -24,22 +24,6 @@ export const CustomStorageManager = ({acceptedFileTypes, path, maxFileCount, max
         Container({ children }) {
           return <Flex direction="column" width="100%" alignContent="center" justifyContent="center">{children}</Flex>;
         },
-        // DropZone({ children, displayText, inDropZone, ...rest }) {
-        //   return (
-        //     <Flex
-        //       alignItems="center"
-        //       direction="column"
-        //       padding="medium"
-        //       backgroundColor={inDropZone ? 'primary.10' : ''}
-        //       maxHeight="40vh"
-        //       {...rest}
-        //     >
-        //       <Text>Drop files here</Text>
-        //       <Divider size="small" label="or" maxWidth="10rem" />
-        //       {children}
-        //     </Flex>
-        //   );
-        // },
         FilePicker({ onClick }) {
           return (
             <Button onClick={onClick}>
@@ -75,4 +59,12 @@ export const CustomStorageManager = ({acceptedFileTypes, path, maxFileCount, max
       }}
     />
   );
+};
+
+CustomStorageManager.propTypes = {
+  acceptedFileTypes: PropTypes.arrayOf(PropTypes.string).isRequired,
+  path: PropTypes.func.isRequired,
+  maxFileCount: PropTypes.number.isRequired,
+  maxFileSize: PropTypes.number.isRequired,
+  uploadedCallback: PropTypes.func,
 };

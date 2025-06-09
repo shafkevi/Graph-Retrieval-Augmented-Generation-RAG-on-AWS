@@ -125,6 +125,11 @@ const ChatHistoryComponent = () => {
                     }
                   >
                     {item.date} via <em>{item.model ? item.model : "User Input"}</em>
+                    {item.ragType && (
+                      <Badge color={item.ragType === 'graphrag' ? 'blue' : 'green'}>
+                        {item.ragType === 'graphrag' ? 'GraphRAG' : 'Regular RAG'}
+                      </Badge>
+                      )}
                   </Checkbox>
 
                 </Box>
