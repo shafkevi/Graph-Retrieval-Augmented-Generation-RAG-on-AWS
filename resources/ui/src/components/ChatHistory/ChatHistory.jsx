@@ -12,35 +12,41 @@ import {
 } from '@cloudscape-design/components';
 
 const ChatHistoryComponent = () => {
+  // Initialize with an empty array
   const [chatHistory, setChatHistory] = useState([]);
   const [displayedItems, setDisplayedItems] = useState([]);
   const [itemsToLoad, setItemsToLoad] = useState(5);
 
+  // Load chat history once on component mount
   useEffect(() => {
-    const storedChatHistory = localStorage.getItem('chat_history');
-    if (storedChatHistory) {
-      const parsedChatHistory = JSON.parse(storedChatHistory);
-      setChatHistory(parsedChatHistory);
-      //setDisplayedItems(chatHistory.slice(0, itemsToLoad));
+    try {
+      const storedChatHistory = localStorage.getItem('chat_history');
+      if (storedChatHistory) {
+        const parsedChatHistory = JSON.parse(storedChatHistory);
+        setChatHistory(parsedChatHistory);
+      }
+    } catch (error) {
+      console.error("Error loading chat history:", error);
     }
-  }, []);
+  }, []); // Empty dependency array - only run once
 
+  // Update displayed items whenever chatHistory or itemsToLoad changes
   useEffect(() => {
-    setDisplayedItems(chatHistory.slice(0, itemsToLoad));
-  }, [itemsToLoad, chatHistory]);
+    if (Array.isArray(chatHistory)) {
+      setDisplayedItems(chatHistory.slice(0, itemsToLoad));
+    }
+  }, [chatHistory, itemsToLoad]); // Both dependencies properly listed
 
   const handleQuestionChange = (index, value) => {
-    const updatedHistory = chatHistory.map((item, i) =>
-      i === index ? { ...item, question: value } : item
-    );
+    const updatedHistory = [...chatHistory];
+    updatedHistory[index].question = value;
     setChatHistory(updatedHistory);
     localStorage.setItem('chat_history', JSON.stringify(updatedHistory));
   };
 
   const handleAnswerChange = (index, value) => {
-    const updatedHistory = chatHistory.map((item, i) =>
-      i === index ? { ...item, answer: value } : item
-    );
+    const updatedHistory = [...chatHistory];
+    updatedHistory[index].answer = value;
     setChatHistory(updatedHistory);
     localStorage.setItem('chat_history', JSON.stringify(updatedHistory));
   };
@@ -55,9 +61,8 @@ const ChatHistoryComponent = () => {
   };
 
   const handleCheckboxChange = (index, checked) => {
-    const updatedHistory = chatHistory.map((item, i) =>
-      i === index ? { ...item, checked } : item
-    );
+    const updatedHistory = [...chatHistory];
+    updatedHistory[index].checked = checked;
     setChatHistory(updatedHistory);
     localStorage.setItem('chat_history', JSON.stringify(updatedHistory));
   };
@@ -97,7 +102,7 @@ const ChatHistoryComponent = () => {
   return (
     <Container header={<Header variant="h1">Manage Chat History</Header>}>
       <ul>
-        <li>Selected messages are included in the history of the chat. </li>
+        <li>Selected messages are included in the history of the chat.</li>
         <li>You can add new messages for debugging purposes.</li>
         <li>Messages are sorted in reverse chronological order, with the most recent message on top.</li>
       </ul>
@@ -108,14 +113,12 @@ const ChatHistoryComponent = () => {
             <Box>
               <Button onClick={() => handleSelectAll(true)}>Select All</Button>
               <Button onClick={() => handleSelectAll(false)}>Deselect All</Button>
-              {
-              chatHistory?.length > 0? 
-                <Button onClick={() => downloadHistory()}>Download History</Button> 
-                : null
-              }
+              {chatHistory && chatHistory.length > 0 && (
+                <Button onClick={downloadHistory}>Download History</Button>
+              )}
             </Box>
           </Box>
-          {displayedItems.map((item, index) => (
+          {displayedItems && displayedItems.map((item, index) => (
             <Box key={index} padding={{ vertical: 's' }} border={{ color: 'black', style: 'solid' }}>
               <Box direction="horizontal" alignItems="center" justifyContent="space-between">
                 <Box direction="horizontal" alignItems="center">
@@ -130,7 +133,7 @@ const ChatHistoryComponent = () => {
                       <Badge color={item.ragType === 'graphrag' ? 'blue' : 'green'}>
                         {item.ragType === 'graphrag' ? 'GraphRAG' : 'Regular RAG'}
                       </Badge>
-                      )}
+                    )}
                   </Checkbox>
 
                 </Box>
@@ -138,14 +141,14 @@ const ChatHistoryComponent = () => {
               </Box>
               <SpaceBetween size="s" direction="vertical">
                 <Input
-                  value={item.question}
+                  value={item.question || ''}
                   onChange={({ detail }) =>
                     handleQuestionChange(index, detail.value)
                   }
                   placeholder="Question"
                 />
                 <Textarea
-                  value={item.answer}
+                  value={item.answer || ''}
                   onChange={({ detail }) =>
                     handleAnswerChange(index, detail.value)
                   }
@@ -154,7 +157,7 @@ const ChatHistoryComponent = () => {
               </SpaceBetween>
             </Box>
           ))}
-          {itemsToLoad < chatHistory.length && (
+          {chatHistory && itemsToLoad < chatHistory.length && (
             <Button onClick={loadMoreItems}>Load More</Button>
           )}
         </SpaceBetween>
