@@ -55,7 +55,7 @@ def get_query_engine(cognito_sub):
     vector_store, graph_store = get_vector_and_graph_stores()
     tenant_id = get_tenant_id(cognito_sub)
     print(f"Original cognito_sub: {cognito_sub}")
-    print(f"Generated tenant_id for query: {tenant_hash}")
+    print(f"Generated tenant_id for query: {tenant_id}")
     # Use traversal_based_search with tenant_id for multitenancy
     query_engine = LexicalGraphQueryEngine.for_traversal_based_search(
         graph_store, 
