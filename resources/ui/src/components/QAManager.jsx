@@ -30,7 +30,7 @@ import { BedrockClient, ListFoundationModelsCommand } from '@aws-sdk/client-bedr
 import { streamingLambda, syncLambda } from './helpers';
 
 export function QAManager({ inferenceURL, creds, region, appConfig }) {
-
+  const [error, setError] = useState(null);
   const navigate = useNavigate();
 
   const [searchQuery, setSearchQuery] = useState(() => {
@@ -154,15 +154,23 @@ export function QAManager({ inferenceURL, creds, region, appConfig }) {
   }
 
   const setResponseToLastQuestionInChatHistory = answer => {
-    const updatedHistory = [...chatHistory];
-    const lastMessage = chatHistory.shift();
-    if(!lastMessage) return;
-    lastMessage.answer = answer;
-    lastMessage.checked = true;
-    chatHistory.unshift(lastMessage);
-    setChatHistory(updatedHistory);
-    localStorage.setItem('chat_history', JSON.stringify(lastMessage));
-  }
+    setChatHistory(prevHistory => {
+      if (!prevHistory || prevHistory.length === 0) return prevHistory;
+      
+      const updatedHistory = [...prevHistory];
+      const lastMessage = { ...updatedHistory[0] }; // Create a copy, don't mutate
+      
+      lastMessage.answer = answer;
+      lastMessage.checked = true;
+      
+      updatedHistory[0] = lastMessage;
+      
+      // Store the complete updated history
+      localStorage.setItem('chat_history', JSON.stringify(updatedHistory));
+      
+      return updatedHistory;
+    });
+  };
 
   const getHistoryForConverseAPI = () => {
     const transformedHistory = [];
@@ -180,43 +188,41 @@ export function QAManager({ inferenceURL, creds, region, appConfig }) {
   }
 
   const getData = async (streaming = true) => {
-    clearResponse();
-    prependQuestionToHistory(searchQuery);
-    setSearching(true);
-
-    const sigv4 = new SignatureV4({
-      service: "lambda",
-      region: creds.identityId.split(":")[0],
-      credentials: creds,
-      sha256: Sha256
-    });
-
-    // Choose endpoint based on RAG mode
-    const selectedInferenceURL = isGraphRAG ? appConfig.graphRagInferenceURL : inferenceURL;
-    
-    let apiUrl;
-    if (streaming) {
-      apiUrl = new URL(selectedInferenceURL);
-    }
-    else {
-      apiUrl = new URL(selectedInferenceURL);
-    }
-
-    const promptOverride = getPromptOverrideObject(systemPrompt);
-
-    const requestBody = {
-      query: searchQuery,
-      promptOverride,
-      strategy: isGraphRAG ? "graphrag" : "rag",
-      model: model,
-      idToken: creds.idToken.toString(),
-      history: getHistoryForConverseAPI()
-    };
-
-    console.log('Request body:', requestBody);
-    console.log('Using endpoint:', selectedInferenceURL);
-
     try {
+      setError(null);
+      clearResponse();
+      prependQuestionToHistory(searchQuery);
+      setSearching(true);
+
+      const sigv4 = new SignatureV4({
+        service: "lambda",
+        region: creds.identityId.split(":")[0],
+        credentials: creds,
+        sha256: Sha256
+      });
+
+      // Choose endpoint based on RAG mode
+      const selectedInferenceURL = isGraphRAG ? appConfig.graphRagInferenceURL : inferenceURL;
+      
+      if (!selectedInferenceURL) {
+        throw new Error(`No inference URL configured for ${isGraphRAG ? 'GraphRAG' : 'Regular RAG'} mode`);
+      }
+      
+      let apiUrl = new URL(selectedInferenceURL);
+      const promptOverride = getPromptOverrideObject(systemPrompt);
+
+      const requestBody = {
+        query: searchQuery,
+        promptOverride,
+        strategy: isGraphRAG ? "graphrag" : "rag",
+        model: model,
+        idToken: creds.idToken.toString(),
+        history: getHistoryForConverseAPI()
+      };
+
+      console.log('Request body:', requestBody);
+      console.log('Using endpoint:', selectedInferenceURL);
+
       const signed = await sigv4.sign({
         body: JSON.stringify(requestBody),
         method: "POST",
@@ -238,15 +244,26 @@ export function QAManager({ inferenceURL, creds, region, appConfig }) {
           (value) => { setResults((data) => [...data, value]); }, 
           setMetadata
         );
-      }
-      else {
+      } else {
         await syncLambda(apiUrl.origin, "POST", requestBody, (value) => { setResults([value.message]); });
       }
 
-      setSearching(false);
-
     } catch (error) {
       console.error("Error streaming data: ", error);
+      setError(error.message);
+      // Update the last question in history to show the error
+      setChatHistory(prevHistory => {
+        if (prevHistory.length === 0) return prevHistory;
+        const updatedHistory = [...prevHistory];
+        updatedHistory[0] = {
+          ...updatedHistory[0],
+          answer: `Error: ${error.message}`,
+          checked: true
+        };
+        localStorage.setItem('chat_history', JSON.stringify(updatedHistory));
+        return updatedHistory;
+      });
+    } finally {
       setSearching(false);
     }
   };

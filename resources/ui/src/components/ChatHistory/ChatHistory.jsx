@@ -12,65 +12,111 @@ import {
 } from '@cloudscape-design/components';
 
 const ChatHistoryComponent = () => {
-  // Initialize with an empty array
   const [chatHistory, setChatHistory] = useState([]);
   const [displayedItems, setDisplayedItems] = useState([]);
   const [itemsToLoad, setItemsToLoad] = useState(5);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Load chat history once on component mount
   useEffect(() => {
-    try {
-      const storedChatHistory = localStorage.getItem('chat_history');
-      if (storedChatHistory) {
-        const parsedChatHistory = JSON.parse(storedChatHistory);
-        setChatHistory(parsedChatHistory);
+    const loadChatHistory = () => {
+      try {
+        setIsLoading(true);
+        const storedChatHistory = localStorage.getItem('chat_history');
+        if (storedChatHistory) {
+          const parsedChatHistory = JSON.parse(storedChatHistory);
+          // Ensure it's an array and has valid structure
+          if (Array.isArray(parsedChatHistory)) {
+            const validatedHistory = parsedChatHistory.map(item => ({
+              question: item.question || '',
+              answer: item.answer || '',
+              checked: Boolean(item.checked),
+              date: item.date || new Date().toISOString(),
+              model: item.model || '',
+              ragType: item.ragType || 'regular'
+            }));
+            setChatHistory(validatedHistory);
+          } else {
+            console.warn('Invalid chat history format, resetting to empty array');
+            setChatHistory([]);
+            localStorage.setItem('chat_history', JSON.stringify([]));
+          }
+        } else {
+          setChatHistory([]);
+        }
+      } catch (error) {
+        console.error("Error loading chat history:", error);
+        setChatHistory([]);
+        // Clear corrupted data
+        localStorage.removeItem('chat_history');
+      } finally {
+        setIsLoading(false);
       }
-    } catch (error) {
-      console.error("Error loading chat history:", error);
-    }
-  }, []); // Empty dependency array - only run once
+    };
+
+    loadChatHistory();
+  }, []);
 
   // Update displayed items whenever chatHistory or itemsToLoad changes
   useEffect(() => {
     if (Array.isArray(chatHistory)) {
       setDisplayedItems(chatHistory.slice(0, itemsToLoad));
     }
-  }, [chatHistory, itemsToLoad]); // Both dependencies properly listed
+  }, [chatHistory, itemsToLoad]);
+
+  // Utility function to update localStorage safely
+  const updateLocalStorage = (newHistory) => {
+    try {
+      localStorage.setItem('chat_history', JSON.stringify(newHistory));
+    } catch (error) {
+      console.error('Error updating localStorage:', error);
+    }
+  };
 
   const handleQuestionChange = (index, value) => {
-    const updatedHistory = [...chatHistory];
-    updatedHistory[index].question = value;
-    setChatHistory(updatedHistory);
-    localStorage.setItem('chat_history', JSON.stringify(updatedHistory));
+    setChatHistory(prevHistory => {
+      const updatedHistory = [...prevHistory];
+      updatedHistory[index] = { ...updatedHistory[index], question: value };
+      updateLocalStorage(updatedHistory);
+      return updatedHistory;
+    });
   };
 
   const handleAnswerChange = (index, value) => {
-    const updatedHistory = [...chatHistory];
-    updatedHistory[index].answer = value;
-    setChatHistory(updatedHistory);
-    localStorage.setItem('chat_history', JSON.stringify(updatedHistory));
+    setChatHistory(prevHistory => {
+      const updatedHistory = [...prevHistory];
+      updatedHistory[index] = { ...updatedHistory[index], answer: value };
+      updateLocalStorage(updatedHistory);
+      return updatedHistory;
+    });
   };
 
   const handleSelectAll = (select) => {
-    const updatedHistory = chatHistory.map((item) => ({
-      ...item,
-      checked: select,
-    }));
-    setChatHistory(updatedHistory);
-    localStorage.setItem('chat_history', JSON.stringify(updatedHistory));
+    setChatHistory(prevHistory => {
+      const updatedHistory = prevHistory.map((item) => ({
+        ...item,
+        checked: select,
+      }));
+      updateLocalStorage(updatedHistory);
+      return updatedHistory;
+    });
   };
 
   const handleCheckboxChange = (index, checked) => {
-    const updatedHistory = [...chatHistory];
-    updatedHistory[index].checked = checked;
-    setChatHistory(updatedHistory);
-    localStorage.setItem('chat_history', JSON.stringify(updatedHistory));
+    setChatHistory(prevHistory => {
+      const updatedHistory = [...prevHistory];
+      updatedHistory[index] = { ...updatedHistory[index], checked };
+      updateLocalStorage(updatedHistory);
+      return updatedHistory;
+    });
   };
 
   const handleDelete = (index) => {
-    const updatedHistory = chatHistory.filter((_, i) => i !== index);
-    setChatHistory(updatedHistory);
-    localStorage.setItem('chat_history', JSON.stringify(updatedHistory));
+    setChatHistory(prevHistory => {
+      const updatedHistory = prevHistory.filter((_, i) => i !== index);
+      updateLocalStorage(updatedHistory);
+      return updatedHistory;
+    });
   };
 
   const loadMoreItems = () => {
@@ -82,22 +128,41 @@ const ChatHistoryComponent = () => {
       question: '', 
       answer: '', 
       checked: false,
-      date: new Date().toISOString()
+      date: new Date().toISOString(),
+      model: '',
+      ragType: 'regular'
     };
-    const updatedHistory = [newItem, ...chatHistory];
-    setChatHistory(updatedHistory);
-    localStorage.setItem('chat_history', JSON.stringify(updatedHistory));
+    
+    setChatHistory(prevHistory => {
+      const updatedHistory = [newItem, ...prevHistory];
+      updateLocalStorage(updatedHistory);
+      return updatedHistory;
+    });
   };
 
   const downloadHistory = () => {
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(chatHistory, null, 2));
-    const downloadAnchorNode = document.createElement('a');
-    downloadAnchorNode.setAttribute("href", dataStr);
-    downloadAnchorNode.setAttribute("download", "chat_history.json");
-    document.body.appendChild(downloadAnchorNode);
-    downloadAnchorNode.click();
-    downloadAnchorNode.remove();
+    try {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(chatHistory, null, 2));
+      const downloadAnchorNode = document.createElement('a');
+      downloadAnchorNode.setAttribute("href", dataStr);
+      downloadAnchorNode.setAttribute("download", "chat_history.json");
+      document.body.appendChild(downloadAnchorNode);
+      downloadAnchorNode.click();
+      downloadAnchorNode.remove();
+    } catch (error) {
+      console.error('Error downloading history:', error);
+    }
   };
+
+  if (isLoading) {
+    return (
+      <Container header={<Header variant="h1">Manage Chat History</Header>}>
+        <Box textAlign="center" padding="xxl">
+          Loading chat history...
+        </Box>
+      </Container>
+    );
+  }
 
   return (
     <Container header={<Header variant="h1">Manage Chat History</Header>}>
@@ -119,7 +184,7 @@ const ChatHistoryComponent = () => {
             </Box>
           </Box>
           {displayedItems && displayedItems.map((item, index) => (
-            <Box key={index} padding={{ vertical: 's' }} border={{ color: 'black', style: 'solid' }}>
+            <Box key={`${item.date}-${index}`} padding={{ vertical: 's' }} border={{ color: 'black', style: 'solid' }}>
               <Box direction="horizontal" alignItems="center" justifyContent="space-between">
                 <Box direction="horizontal" alignItems="center">
                   <Checkbox
@@ -135,7 +200,6 @@ const ChatHistoryComponent = () => {
                       </Badge>
                     )}
                   </Checkbox>
-
                 </Box>
                 <Button onClick={() => handleDelete(index)}>Delete</Button>
               </Box>
