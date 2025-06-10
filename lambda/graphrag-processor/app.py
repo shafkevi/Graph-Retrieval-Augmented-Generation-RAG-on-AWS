@@ -10,6 +10,7 @@ concurrent.futures.process.ProcessPoolExecutor = ThreadPoolExecutor
 import boto3
 import urllib.parse
 import hashlib
+import urllib.parse
 import json
 import shutil
 import pypdf
@@ -249,8 +250,8 @@ def process_documents_with_graphrag(docs, cognito_sub, connection_id):
         os.environ['OMP_NUM_THREADS'] = '1'
         os.environ['MKL_NUM_THREADS'] = '1'
         os.environ['PYTHONHASHSEED'] = '0'
-        decoded_sub = urllib.parse.unquote(cognito_sub).replace(':', '_').replace('-', '_')
-        tenant_hash = hashlib.md5(cognito_sub.encode()).hexdigest()[:10].lower()
+        normalized_sub = urllib.parse.unquote(cognito_sub)
+        tenant_hash = hashlib.md5(normalized_sub.encode()).hexdigest()[:10].lower()
         print(f"Original cognito_sub: {cognito_sub}")
         print(f"Generated tenant_id: {tenant_hash}")
         # FIXED: Pass the checkpoint directory to ensure it uses /tmp

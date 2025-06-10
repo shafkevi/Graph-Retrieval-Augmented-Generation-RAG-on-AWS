@@ -10,6 +10,7 @@ import concurrent.futures
 import json
 import jwt
 import hashlib
+import urllib.parse
 import boto3
 from graphrag_toolkit.lexical_graph.storage import VectorStoreFactory, GraphStoreFactory
 from graphrag_toolkit.lexical_graph import LexicalGraphQueryEngine
@@ -46,7 +47,8 @@ def get_vector_and_graph_stores():
 def get_query_engine(cognito_sub):
     """Get query engine with tenant_id for user segregation"""
     vector_store, graph_store = get_vector_and_graph_stores()
-    tenant_hash = hashlib.md5(cognito_sub.encode()).hexdigest()[:10].lower()
+    normalized_sub = urllib.parse.unquote(cognito_sub)
+    tenant_hash = hashlib.md5(normalized_sub.encode()).hexdigest()[:10].lower()
     print(f"Original cognito_sub: {cognito_sub}")
     print(f"Generated tenant_id for query: {tenant_hash}")
     # Use traversal_based_search with tenant_id for multitenancy
