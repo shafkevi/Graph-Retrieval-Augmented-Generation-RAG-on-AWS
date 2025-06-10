@@ -47,16 +47,16 @@ export function QAManager({ inferenceURL, creds, region, appConfig }) {
   const [models, setModels] = useState([]);
   const localStorageModel = localStorage.getItem('llm_model_id') || 'loading...';
 
-  let chatHistory = [];
-  try {
-    const storedHistory = localStorage.getItem('chat_history');
-    if (storedHistory) {
-      chatHistory = JSON.parse(storedHistory);
+// With this safer initialization:
+  const [chatHistory, setChatHistory] = useState(() => {
+    try {
+      const stored = localStorage.getItem('chat_history');
+      return stored ? JSON.parse(stored) : [];
+    } catch (error) {
+      console.log('Error parsing chat history', error);
+      return []; // Always return an array if parsing fails
     }
-  } catch (error) {
-    console.log('Error parsing chat history', error);
-    // Ensure chatHistory is always an array even if parsing fails
-  }
+  });
   
   const [model, setModel] = useState(localStorageModel);
 
@@ -149,15 +149,18 @@ export function QAManager({ inferenceURL, creds, region, appConfig }) {
       ragType: isGraphRAG ? 'graphrag' : 'regular' // Add RAG type to history
     }
     const updatedChatHistory = [newQAPair, ...chatHistory];
+    setChatHistory(updatedChatHistory);
     localStorage.setItem('chat_history', JSON.stringify(updatedChatHistory));
   }
 
   const setResponseToLastQuestionInChatHistory = answer => {
+    const updatedHistory = [...chatHistory];
     const lastMessage = chatHistory.shift();
     if(!lastMessage) return;
     lastMessage.answer = answer;
     lastMessage.checked = true;
     chatHistory.unshift(lastMessage);
+    setChatHistory(updatedHistory);
     localStorage.setItem('chat_history', JSON.stringify(lastMessage));
   }
 
