@@ -44,18 +44,23 @@ def get_vector_and_graph_stores():
     
     return vector_store, graph_store
 
+def get_tenant_id(cognito_sub):
+    normalized_sub = urllib.parse.unquote(cognito_sub)
+    tenant_id = hashlib.md5(normalized_sub.encode()).hexdigest()[:10].lower()
+    return tenant_id
+
+
 def get_query_engine(cognito_sub):
     """Get query engine with tenant_id for user segregation"""
     vector_store, graph_store = get_vector_and_graph_stores()
-    normalized_sub = urllib.parse.unquote(cognito_sub)
-    tenant_hash = hashlib.md5(normalized_sub.encode()).hexdigest()[:10].lower()
+    tenant_id = get_tenant_id(cognito_sub)
     print(f"Original cognito_sub: {cognito_sub}")
     print(f"Generated tenant_id for query: {tenant_hash}")
     # Use traversal_based_search with tenant_id for multitenancy
     query_engine = LexicalGraphQueryEngine.for_traversal_based_search(
         graph_store, 
         vector_store,
-        tenant_id=tenant_hash,  # Use cognito_sub as tenant_id for multitenancy
+        tenant_id=tenant_id,  # Use cognito_sub as tenant_id for multitenancy
         #response_model=RESPONSE_MODEL  # Use the configured response model
     )
     
@@ -153,7 +158,7 @@ def lambda_handler(event, context):
         
         # Extract parameters
         query = body.get('query', '')
-        
+        tenant_id=get_tenant_id(identity_id)
         if not query:
             return {
                 'statusCode': 400,
@@ -192,7 +197,7 @@ def lambda_handler(event, context):
                     'source': 'knowledge_graph',
                     'type': 'graphrag',
                     'query': query,
-                    'tenant_id': identity_id,
+                    'tenant_id': tenant_id,
                     'model': RESPONSE_MODEL,
                     'method': 'traversal_based_search'
                 }
@@ -205,13 +210,6 @@ def lambda_handler(event, context):
             
             return {
                 'statusCode': 200,
-                #'headers': {
-                 #   'Content-Type': 'text/plain',
-                  #  'Access-Control-Allow-Origin': '*',
-                  #  'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-                   # 'Access-Control-Allow-Methods': 'OPTIONS,POST,GET',
-                   # 'Transfer-Encoding': 'chunked'
-               # },
                 'body': full_response
             }
             
@@ -220,12 +218,6 @@ def lambda_handler(event, context):
             print(error_msg)
             return {
                 'statusCode': 500,
-                'headers': {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*',
-                    'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-                    'Access-Control-Allow-Methods': 'OPTIONS,POST,GET'
-                },
                 'body': json.dumps({'error': error_msg})
             }
         
@@ -233,11 +225,5 @@ def lambda_handler(event, context):
         print(f'Error processing GraphRAG request: {e}')
         return {
             'statusCode': 500,
-            'headers': {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-                'Access-Control-Allow-Methods': 'OPTIONS,POST,GET'
-            },
             'body': json.dumps({'error': f'Failed to process GraphRAG request: {str(e)}'})
         }

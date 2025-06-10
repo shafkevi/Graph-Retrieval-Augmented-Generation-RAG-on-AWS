@@ -47,11 +47,15 @@ export function QAManager({ inferenceURL, creds, region, appConfig }) {
   const [models, setModels] = useState([]);
   const localStorageModel = localStorage.getItem('llm_model_id') || 'loading...';
 
-  let chatHistory = localStorage.getItem('chat_history') || "[]";
+  let chatHistory = [];
   try {
-    chatHistory = JSON.parse(chatHistory);
+    const storedHistory = localStorage.getItem('chat_history');
+    if (storedHistory) {
+      chatHistory = JSON.parse(storedHistory);
+    }
   } catch (error) {
     console.log('Error parsing chat history', error);
+    // Ensure chatHistory is always an array even if parsing fails
   }
   
   const [model, setModel] = useState(localStorageModel);
