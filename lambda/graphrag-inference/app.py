@@ -208,10 +208,7 @@ def lambda_handler(event, context):
             metadata_prefix = f"_~_{json.dumps(document_metadata)}_~_\n\n"
             full_response = metadata_prefix + response_text
             
-            return {
-                'statusCode': 200,
-                'body': full_response
-            }
+            return full_response
             
         except Exception as e:
             error_msg = f'Error executing GraphRAG query: {str(e)}'
