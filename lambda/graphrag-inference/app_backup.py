@@ -6,7 +6,6 @@ import urllib.parse
 import boto3
 from graphrag_toolkit.lexical_graph.storage import VectorStoreFactory, GraphStoreFactory
 from graphrag_toolkit.lexical_graph import LexicalGraphQueryEngine
-import awslambda
 #import nest_asyncio
 
 # Apply nest_asyncio for Lambda environment
@@ -118,9 +117,7 @@ def parse_id_token(event):
             }),
         }
 
-# Change the lambda_handler signature and implementation
-@awslambda.streamify_response
-def lambda_handler(event, response_stream, context):
+def lambda_handler(event, context):
     """Main Lambda handler for GraphRAG inference - Streaming Response"""
     
     print(f'GraphRAG Lambda Event: {json.dumps(event)}')
@@ -129,12 +126,16 @@ def lambda_handler(event, response_stream, context):
     id_token_result = parse_id_token(event)
     
     if id_token_result['statusCode'] != 200:
-        error_response = json.dumps({
-            'error': id_token_result.get('body', 'Authentication error')
-        })
-        response_stream.write(error_response)
-        response_stream.end()
-        return
+        return {
+            'statusCode': id_token_result['statusCode'],
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+                'Access-Control-Allow-Methods': 'OPTIONS,POST,GET'
+            },
+            'body': id_token_result['body']
+        }
     
     identity_id = id_token_result['identityId']
     print(f"GraphRAG run on behalf of: {identity_id}")
@@ -149,23 +150,39 @@ def lambda_handler(event, response_stream, context):
         
         # Extract parameters
         query = body.get('query', '')
-        streaming_format = body.get('streamingFormat', 'default')
-        tenant_id = get_tenant_id(identity_id)
-        
+        tenant_id=get_tenant_id(identity_id)
         if not query:
-            error_response = json.dumps({'error': 'Query is required'})
-            response_stream.write(error_response)
-            response_stream.end()
-            return
+            return {
+                'statusCode': 400,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+                    'Access-Control-Allow-Methods': 'OPTIONS,POST,GET'
+                },
+                'body': json.dumps({'error': 'Query is required'})
+            }
         
         print(f'GraphRAG Query: {query}')
         print(f'GraphRAG Identity ID: {identity_id}')
         
-        # Execute GraphRAG query
+        # Execute GraphRAG query - this is the complete workflow
         try:
             query_engine = get_query_engine(identity_id)
             
-            # Create document metadata
+            print(f"Executing GraphRAG query: {query}")
+            # This performs the complete GraphRAG workflow:
+            # 1. Semantic search in knowledge graph
+            # 2. Context retrieval 
+            # 3. LLM inference with retrieved context
+            # 4. Final response generation
+            response = query_engine.query(query)
+            
+            # Extract the response text
+            response_text = str(response)
+            print(f'GraphRAG response: {response_text}')
+            
+            # Create document metadata indicating this came from GraphRAG
             document_metadata = [{
                 'content': 'Response generated using GraphRAG knowledge graph traversal and vector search',
                 'metadata': {
@@ -178,30 +195,24 @@ def lambda_handler(event, response_stream, context):
                 }
             }]
             
-            # Send metadata first with the same format as in the JavaScript version
+            # For streaming response, we need to format it properly
+            # Send metadata first, then the response
             metadata_prefix = f"_~_{json.dumps(document_metadata)}_~_\n\n"
-            response_stream.write(metadata_prefix)
+            full_response = metadata_prefix + response_text
             
-            # Execute the query to get the response
-            response = query_engine.query(query)
-            response_text = str(response)
-            
-            # Format and send the response according to the streaming format
-            if streaming_format == 'fetch-event-source':
-                response_stream.write(f"event: message\ndata: {response_text}\n\n")
-            else:
-                response_stream.write(response_text)
-                
-            # End the stream after sending all content
-            response_stream.end()
+            return full_response
             
         except Exception as e:
             error_msg = f'Error executing GraphRAG query: {str(e)}'
             print(error_msg)
-            response_stream.write(json.dumps({'error': error_msg}))
-            response_stream.end()
+            return {
+                'statusCode': 500,
+                'body': json.dumps({'error': error_msg})
+            }
         
     except Exception as e:
         print(f'Error processing GraphRAG request: {e}')
-        response_stream.write(json.dumps({'error': f'Failed to process GraphRAG request: {str(e)}'}))
-        response_stream.end()
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'error': f'Failed to process GraphRAG request: {str(e)}'})
+        }
