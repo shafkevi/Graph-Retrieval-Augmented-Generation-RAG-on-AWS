@@ -7,7 +7,8 @@ import {
   Input,
   Header,
   Container,
-  Textarea
+  Textarea,
+  Badge
 } from '@cloudscape-design/components';
 
 const ChatHistoryComponent = () => {
@@ -20,7 +21,7 @@ const ChatHistoryComponent = () => {
     if (storedChatHistory) {
       const parsedChatHistory = JSON.parse(storedChatHistory);
       setChatHistory(parsedChatHistory);
-      setDisplayedItems(chatHistory.slice(0, itemsToLoad));
+      //setDisplayedItems(chatHistory.slice(0, itemsToLoad));
     }
   }, []);
 
