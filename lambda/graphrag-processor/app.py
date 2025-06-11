@@ -392,7 +392,7 @@ def single_lambda_handler_create(record):
 
     try:
         # Load documents using SimpleDirectoryReader
-        docs = prepare_document_for_processing(local_dir_path)
+        docs = prepare_document_for_processing(local_file_path)
         if not docs:
             raise Exception("No documents were loaded for processing")
         
