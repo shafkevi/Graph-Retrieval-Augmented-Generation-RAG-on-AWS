@@ -186,7 +186,6 @@ def get_file_extension(file_path):
 def convert_pdf_to_text(pdf_path, output_dir):
     """Convert PDF to text files for processing"""
     
-    
     text_content = ""
     with open(pdf_path, 'rb') as file:
         pdf_reader = pypdf.PdfReader(file)
@@ -215,7 +214,8 @@ def copy_txt_file(txt_path, output_dir):
 def prepare_document_for_processing(file_path):
     """Prepare document for GraphRAG processing based on file type"""
     file_extension = get_file_extension(file_path)
-    
+    print("received file path is" + file_path)
+    print("file extension is " + file_extension)
     if file_extension == '.pdf':
         llmsherpa_api_url = "https://readers.llmsherpa.com/api/document/developer/parseDocument?renderFormat=all"
         pdf_loader = SmartPDFLoader(llmsherpa_api_url=llmsherpa_api_url)
