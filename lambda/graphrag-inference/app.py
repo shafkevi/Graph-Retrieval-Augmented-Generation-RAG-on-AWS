@@ -6,7 +6,7 @@ import urllib.parse
 import boto3
 from graphrag_toolkit.lexical_graph.storage import VectorStoreFactory, GraphStoreFactory
 from graphrag_toolkit.lexical_graph import LexicalGraphQueryEngine
-import awslambda
+from aws_lambda_powertools.utilities.streaming import ResponseStream
 #import nest_asyncio
 
 # Apply nest_asyncio for Lambda environment
@@ -118,9 +118,18 @@ def parse_id_token(event):
             }),
         }
 
-# Change the lambda_handler signature and implementation
-@awslambda.streamify_response
-def lambda_handler(event, response_stream, context):
+class GraphRAGStream(ResponseStream):
+    def __init__(self, streaming_format='default'):
+        super().__init__()
+        self.streaming_format = streaming_format
+        
+    def transform(self, chunk: str) -> str:
+        # Format based on the streaming format parameter
+        if self.streaming_format == 'fetch-event-source':
+            return f"event: message\ndata: {chunk}\n\n"
+        return chunk
+
+def lambda_handler(event, context):
     """Main Lambda handler for GraphRAG inference - Streaming Response"""
     
     print(f'GraphRAG Lambda Event: {json.dumps(event)}')
@@ -129,12 +138,10 @@ def lambda_handler(event, response_stream, context):
     id_token_result = parse_id_token(event)
     
     if id_token_result['statusCode'] != 200:
-        error_response = json.dumps({
-            'error': id_token_result.get('body', 'Authentication error')
-        })
-        response_stream.write(error_response)
-        response_stream.end()
-        return
+        return {
+            'statusCode': id_token_result['statusCode'],
+            'body': id_token_result.get('body', json.dumps({'error': 'Authentication error'}))
+        }
     
     identity_id = id_token_result['identityId']
     print(f"GraphRAG run on behalf of: {identity_id}")
@@ -153,16 +160,16 @@ def lambda_handler(event, response_stream, context):
         tenant_id = get_tenant_id(identity_id)
         
         if not query:
-            error_response = json.dumps({'error': 'Query is required'})
-            response_stream.write(error_response)
-            response_stream.end()
-            return
+            return {
+                'statusCode': 400,
+                'body': json.dumps({'error': 'Query is required'})
+            }
         
-        print(f'GraphRAG Query: {query}')
-        print(f'GraphRAG Identity ID: {identity_id}')
+        # Initialize the response stream
+        stream = GraphRAGStream(streaming_format=streaming_format)
         
-        # Execute GraphRAG query
         try:
+            # Execute GraphRAG query
             query_engine = get_query_engine(identity_id)
             
             # Create document metadata
@@ -178,30 +185,31 @@ def lambda_handler(event, response_stream, context):
                 }
             }]
             
-            # Send metadata first with the same format as in the JavaScript version
-            metadata_prefix = f"_~_{json.dumps(document_metadata)}_~_\n\n"
-            response_stream.write(metadata_prefix)
+            # Send metadata first (this doesn't go through the transform method)
+            stream.write(f"_~_{json.dumps(document_metadata)}_~_\n\n")
             
-            # Execute the query to get the response
+            # Get response and stream it
             response = query_engine.query(query)
             response_text = str(response)
             
-            # Format and send the response according to the streaming format
-            if streaming_format == 'fetch-event-source':
-                response_stream.write(f"event: message\ndata: {response_text}\n\n")
-            else:
-                response_stream.write(response_text)
-                
-            # End the stream after sending all content
-            response_stream.end()
+            # Write the response to the stream
+            stream.write(response_text)
+            
+            # Return the streaming response
+            return stream.response()
             
         except Exception as e:
             error_msg = f'Error executing GraphRAG query: {str(e)}'
             print(error_msg)
-            response_stream.write(json.dumps({'error': error_msg}))
-            response_stream.end()
+            return {
+                'statusCode': 500,
+                'body': json.dumps({'error': error_msg})
+            }
         
     except Exception as e:
         print(f'Error processing GraphRAG request: {e}')
-        response_stream.write(json.dumps({'error': f'Failed to process GraphRAG request: {str(e)}'}))
-        response_stream.end()
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'error': f'Failed to process GraphRAG request: {str(e)}'})
+        }
+
