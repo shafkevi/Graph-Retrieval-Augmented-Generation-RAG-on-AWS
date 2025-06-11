@@ -211,7 +211,7 @@ def copy_txt_file(txt_path, output_dir):
     
     return destination_path
 
-def prepare_document_for_processing(file_path):
+def prepare_document_for_processing(file_path,local_dir_path):
     """Prepare document for GraphRAG processing based on file type"""
     file_extension = get_file_extension(file_path)
     print("received file path is" + file_path)
@@ -223,7 +223,7 @@ def prepare_document_for_processing(file_path):
         return documents       
     
     elif file_extension == '.txt':
-        reader = SimpleDirectoryReader(file_path)
+        reader = SimpleDirectoryReader(local_dir_path)
         documents = reader.load_data()
         return documents
     
@@ -392,7 +392,7 @@ def single_lambda_handler_create(record):
 
     try:
         # Load documents using SimpleDirectoryReader
-        docs = prepare_document_for_processing(local_file_path)
+        docs = prepare_document_for_processing(local_file_path,local_dir_path)
         if not docs:
             raise Exception("No documents were loaded for processing")
         
