@@ -14,6 +14,7 @@ import urllib.parse
 import json
 import shutil
 import pypdf
+from llama_index.readers.smart_pdf_loader import SmartPDFLoader
 import traceback
 from boto3.dynamodb.conditions import Key
 from graphrag_toolkit.lexical_graph.storage import VectorStoreFactory, GraphStoreFactory
@@ -211,19 +212,20 @@ def copy_txt_file(txt_path, output_dir):
     
     return destination_path
 
-def prepare_document_for_processing(file_path, output_dir, connection_id=None):
+def prepare_document_for_processing(file_path):
     """Prepare document for GraphRAG processing based on file type"""
     file_extension = get_file_extension(file_path)
     
     if file_extension == '.pdf':
-        if connection_id:
-            send_message("message", "Converting PDF to text for processing...", connection_id, "info")
-        return convert_pdf_to_text(file_path, output_dir)
+        llmsherpa_api_url = "https://readers.llmsherpa.com/api/document/developer/parseDocument?renderFormat=all"
+        pdf_loader = SmartPDFLoader(llmsherpa_api_url=llmsherpa_api_url)
+        documents = pdf_loader.load_data(file_path)
+        return documents       
     
     elif file_extension == '.txt':
-        if connection_id:
-            send_message("message", "Preparing TXT file for processing...", connection_id, "info")
-        return copy_txt_file(file_path, output_dir)
+        reader = SimpleDirectoryReader(file_path)
+        documents = reader.load_data()
+        return documents
     
     else:
         raise ValueError(f"Unsupported file type: {file_extension}. Only PDF and TXT files are supported.")
@@ -231,21 +233,9 @@ def prepare_document_for_processing(file_path, output_dir, connection_id=None):
 def process_documents_with_graphrag(docs, cognito_sub, connection_id):
     """Process documents using GraphRAG toolkit with tenant_id for multitenancy"""
     try:
-        # FIXED: Set working directory to /tmp to avoid read-only filesystem errors
-        #original_cwd = os.getcwd()
-        #tmp_work_dir = os.path.join('/tmp', 'graphrag_work')
-        #os.makedirs(tmp_work_dir, exist_ok=True)
-        #os.chdir(tmp_work_dir)
-        
-        #print(f"Changed working directory to: {tmp_work_dir}")
         
         # Get vector and graph stores
         vector_store, graph_store = get_vector_and_graph_stores()
-        
-        # Create checkpoint for this processing session in /tmp
-        #checkpoint_name = f"doc-checkpoint-{cognito_sub}-{abs(hash(str(docs)))}"
-        #checkpoint_dir = os.path.join('/tmp', 'checkpoints')
-        #os.makedirs(checkpoint_dir, exist_ok=True)
         os.environ['TOKENIZERS_PARALLELISM'] = 'false'
         os.environ['OMP_NUM_THREADS'] = '1'
         os.environ['MKL_NUM_THREADS'] = '1'
@@ -254,11 +244,7 @@ def process_documents_with_graphrag(docs, cognito_sub, connection_id):
         tenant_hash = hashlib.md5(normalized_sub.encode()).hexdigest()[:10].lower()
         print(f"Original cognito_sub: {cognito_sub}")
         print(f"Generated tenant_id: {tenant_hash}")
-        # FIXED: Pass the checkpoint directory to ensure it uses /tmp
-        #checkpoint = Checkpoint(checkpoint_name, output_dir=checkpoint_dir)
-        
-        #print(f"Created checkpoint: {checkpoint_name} in {checkpoint_dir}")
-        
+
         # Create LexicalGraphIndex with tenant_id for user segregation
         graph_index = LexicalGraphIndex(
             graph_store, 
@@ -273,9 +259,6 @@ def process_documents_with_graphrag(docs, cognito_sub, connection_id):
         print("Starting GraphRAG extract_and_build process...")
         graph_index.extract_and_build(docs, show_progress=False)
         print("GraphRAG extract_and_build completed successfully")
-        
-        # Restore original working directory
-        #os.chdir(original_cwd)
         
         return True
         
@@ -408,17 +391,8 @@ def single_lambda_handler_create(record):
         }
 
     try:
-        # Create directory for text processing
-        #text_dir = os.path.join('/tmp', 'txt_data')
-        #os.makedirs(text_dir, exist_ok=True)
-        
-        # Prepare document based on file type (PDF or TXT)
-        #processed_file_path = prepare_document_for_processing(local_file_path, text_dir, connection_id)
-        
         # Load documents using SimpleDirectoryReader
-        reader = SimpleDirectoryReader(local_dir_path)
-        docs = reader.load_data()
-        
+        docs = prepare_document_for_processing(local_dir_path)
         if not docs:
             raise Exception("No documents were loaded for processing")
         
@@ -461,9 +435,8 @@ def single_lambda_handler_create(record):
         'type': 'create'
     }
 
-# Keep all other existing functions unchanged...
+
 def single_lambda_handler_delete(record):
-    # ... existing code remains the same
     print("GraphRAG delete handler")
     print(record)
 
@@ -518,8 +491,7 @@ def single_lambda_handler_delete(record):
         # tracking which documents contributed to which graph entities
         
         # For now, we'll just delete the registry entry
-        # In a production system, you'd want to implement proper graph cleanup
-        
+                
         file_type = "PDF" if file_extension == '.pdf' else "TXT"
         if connection_id:
             send_message("message", f"Deleting GraphRAG data for {file_type} file: {filename}...", connection_id, "info")
