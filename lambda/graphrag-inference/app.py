@@ -8,6 +8,10 @@ from graphrag_toolkit.lexical_graph.storage import VectorStoreFactory, GraphStor
 from graphrag_toolkit.lexical_graph import LexicalGraphQueryEngine
 from graphrag_toolkit.lexical_graph.storage.vector import to_embedded_query
 #import nest_asyncio
+import uvicorn
+from fastapi import FastAPI
+from fastapi.responses import RedirectResponse, StreamingResponse
+app = FastAPI()
 
 # Apply nest_asyncio for Lambda environment
 #nest_asyncio.apply()
@@ -152,10 +156,7 @@ async def bedrock_stream(conversation, model='us.anthropic.claude-3-7-sonnet-202
                     yield "\n"
 
 
-import uvicorn
-from fastapi import FastAPI
-from fastapi.responses import RedirectResponse, StreamingResponse
-app = FastAPI()
+
 @app.post("/")
 def lambda_handler(event, context):
     conversation = []
@@ -177,9 +178,6 @@ def lambda_handler(event, context):
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8080")))
-
-
-
 
 
 
