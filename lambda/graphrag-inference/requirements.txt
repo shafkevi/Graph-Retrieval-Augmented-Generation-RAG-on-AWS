@@ -2,7 +2,7 @@ PyJWT==2.8.0
 anthropic-bedrock==0.8.0
 boto3==1.36.1
 botocore==1.36.1
-fastapi==0.115.2
+# fastapi==0.115.2
 json2xml==5.0.5
 llama-index-core==0.12.37
 llama-index-embeddings-bedrock==0.5.0
@@ -14,7 +14,7 @@ python-dotenv==1.0.1
 smart_open==7.1.0
 spacy==3.7.5
 tfidf_matcher==0.3.0
-uvicorn==0.31.1
-asyncio
+# uvicorn==0.31.1
+# asyncio
 https://github.com/awslabs/graphrag-toolkit/archive/refs/tags/v3.7.1.zip#subdirectory=lexical-graph
 
