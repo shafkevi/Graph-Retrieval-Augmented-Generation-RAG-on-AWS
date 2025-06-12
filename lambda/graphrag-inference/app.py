@@ -4,6 +4,7 @@ import jwt
 import hashlib
 import urllib.parse
 import boto3
+import logger
 from graphrag_toolkit.lexical_graph.storage import VectorStoreFactory, GraphStoreFactory
 from graphrag_toolkit.lexical_graph import LexicalGraphQueryEngine
 
@@ -37,6 +38,7 @@ from llama_index.core.base.response.schema import Response, RESPONSE_TYPE
 from llama_index.core.schema import QueryBundle
 class QueryEngine(LexicalGraphQueryEngine):
     print('Init Custom QueryEngine')
+    @classmethod
     def special_query(self, query_bundle: QueryBundle) -> RESPONSE_TYPE:
         """
         Executes a query against the system and processes the results to generate a
@@ -64,19 +66,19 @@ class QueryEngine(LexicalGraphQueryEngine):
             query_bundle = to_embedded_query(query_bundle, GraphRAGConfig.embed_model)
             
             print('CustomQueryEngine._query.retrieve')
-            results = self.retriever.retrieve(query_bundle)
+            results = super().retriever.retrieve(query_bundle)
 
             end_retrieve = time.time()
 
-            for post_processor in self.post_processors:
+            for post_processor in super().post_processors:
                 results = post_processor.postprocess_nodes(results, query_bundle)
 
             end_postprocessing = time.time()
 
             print('CustomQueryEngine._query._format_context')
-            context = self._format_context(results, self.context_format)
+            context = super()._format_context(results, super().context_format)
             print('CustomQueryEngine._query._generate_response')
-            answer = self._generate_response(query_bundle, context)
+            answer = super()._generate_response(query_bundle, context)
 
             end = time.time()
 
@@ -90,10 +92,10 @@ class QueryEngine(LexicalGraphQueryEngine):
                 'postprocessing_ms': postprocess_ms,
                 'answer_ms': answer_ms,
                 'total_ms': total_ms,
-                'context_format': self.context_format,
-                'retriever': f'{type(self.retriever).__name__}: {self.retriever.__dict__}',
+                'context_format': super().context_format,
+                'retriever': f'{type(super().retriever).__name__}: {super().retriever.__dict__}',
                 'query': query_bundle.query_str,
-                'postprocessors': [type(p).__name__ for p in self.post_processors],
+                'postprocessors': [type(p).__name__ for p in super().post_processors],
                 'context': context,
                 'num_source_nodes': len(results)
             }
@@ -286,6 +288,9 @@ def lambda_handler(event, context):
             return full_response
             
         except Exception as e:
+            import traceback
+            print(traceback.format_exc())
+            
             error_msg = f'Error executing GraphRAG query: {str(e)}'
             print(error_msg)
             return {
