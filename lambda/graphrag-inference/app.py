@@ -153,29 +153,29 @@ async def bedrock_stream(conversation, model='us.anthropic.claude-3-7-sonnet-202
 
 import uvicorn
 from fastapi import FastAPI
-from fastapi.responses import RedirectResponse, StreamingResponse
-app = FastAPI()
-@app.post("/")
-def lambda_handler(event, context):
-    conversation = []
-    if event.get('isBase64Encoded'):
-        import base64
-        body = json.loads(base64.b64decode(event['body']).decode('utf-8'))
-    else:
-        body = json.loads(event['body']) if isinstance(event['body'], str) else event['body']
+# from fastapi.responses import RedirectResponse, StreamingResponse
+# app = FastAPI()
+# @app.post("/")
+# def lambda_handler(event, context):
+#     conversation = []
+#     if event.get('isBase64Encoded'):
+#         import base64
+#         body = json.loads(base64.b64decode(event['body']).decode('utf-8'))
+#     else:
+#         body = json.loads(event['body']) if isinstance(event['body'], str) else event['body']
     
-    # Extract parameters
-    query = body.get('query', '')
-    history = body.get('history', [])
-    conversation = [h for h in history]
-    conversation.append({
-        "role": "user",
-        "content": query
-    })
-    return StreamingResponse(bedrock_stream(conversation), media_type="text/html")
+#     # Extract parameters
+#     query = body.get('query', '')
+#     history = body.get('history', [])
+#     conversation = [h for h in history]
+#     conversation.append({
+#         "role": "user",
+#         "content": query
+#     })
+#     return StreamingResponse(bedrock_stream(conversation), media_type="text/html")
 
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8080")))
+# if __name__ == "__main__":
+#     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8080")))
 
 
 
