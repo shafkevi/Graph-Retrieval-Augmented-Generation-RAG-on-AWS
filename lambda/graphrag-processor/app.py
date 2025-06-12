@@ -13,7 +13,6 @@ import hashlib
 import urllib.parse
 import json
 import shutil
-import pypdf
 import traceback
 from boto3.dynamodb.conditions import Key
 from graphrag_toolkit.lexical_graph.storage import VectorStoreFactory, GraphStoreFactory
@@ -183,23 +182,6 @@ def get_file_extension(file_path):
     """Get the file extension in lowercase"""
     return os.path.splitext(file_path)[1].lower()
 
-def convert_pdf_to_text(pdf_path, output_dir):
-    """Convert PDF to text files for processing"""
-    
-    text_content = ""
-    with open(pdf_path, 'rb') as file:
-        pdf_reader = pypdf.PdfReader(file)
-        for page in pdf_reader.pages:
-            text_content += page.extract_text() + "\n"
-    
-    # Save as text file
-    text_filename = os.path.splitext(os.path.basename(pdf_path))[0] + ".txt"
-    text_path = os.path.join(output_dir, text_filename)
-    
-    with open(text_path, 'w', encoding='utf-8') as text_file:
-        text_file.write(text_content)
-    
-    return text_path
 
 def copy_txt_file(txt_path, output_dir):
     """Copy TXT file to processing directory"""
