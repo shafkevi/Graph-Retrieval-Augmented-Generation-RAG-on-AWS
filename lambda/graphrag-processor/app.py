@@ -14,13 +14,13 @@ import urllib.parse
 import json
 import shutil
 import pypdf
-from llama_index.readers.smart_pdf_loader import SmartPDFLoader
 import traceback
 from boto3.dynamodb.conditions import Key
 from graphrag_toolkit.lexical_graph.storage import VectorStoreFactory, GraphStoreFactory
 from graphrag_toolkit.lexical_graph import LexicalGraphIndex
 #from graphrag_toolkit.lexical_graph.indexing.build import Checkpoint
 from llama_index.core import SimpleDirectoryReader
+from llama_index.readers.file import PyMuPDFReader
 
 #import nest_asyncio
 
@@ -217,9 +217,10 @@ def prepare_document_for_processing(file_path,local_dir_path):
     print("received file path is" + file_path)
     print("file extension is " + file_extension)
     if file_extension == '.pdf':
-        llmsherpa_api_url = "https://readers.llmsherpa.com/api/document/developer/parseDocument?renderFormat=all"
-        pdf_loader = SmartPDFLoader(llmsherpa_api_url=llmsherpa_api_url)
-        documents = pdf_loader.load_data(file_path)
+        parser = PyMuPDFReader()
+        file_extractor = {".pdf": parser}
+        reader=SimpleDirectoryReader(local_dir_path, file_extractor=file_extractor)
+        documents = reader.load_data()
         return documents       
     
     elif file_extension == '.txt':
