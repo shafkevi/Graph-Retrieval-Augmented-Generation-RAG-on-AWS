@@ -15,5 +15,6 @@ smart_open==7.1.0
 spacy==3.7.5
 tfidf_matcher==0.3.0
 uvicorn==0.31.1
+asyncio
 https://github.com/awslabs/graphrag-toolkit/archive/refs/tags/v3.7.1.zip#subdirectory=lexical-graph
 

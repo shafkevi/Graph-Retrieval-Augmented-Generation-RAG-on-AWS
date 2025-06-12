@@ -8,6 +8,7 @@ from graphrag_toolkit.lexical_graph.storage import VectorStoreFactory, GraphStor
 from graphrag_toolkit.lexical_graph import LexicalGraphQueryEngine
 from graphrag_toolkit.lexical_graph.storage.vector import to_embedded_query
 #import nest_asyncio
+import asyncio
 import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse, StreamingResponse
@@ -181,6 +182,7 @@ def lambda_handler(event, context):
 
     except Exception as e:
         import traceback
+        print('Exception!', e)
         print(traceback.format_exc())
 
 if __name__ == "__main__":
