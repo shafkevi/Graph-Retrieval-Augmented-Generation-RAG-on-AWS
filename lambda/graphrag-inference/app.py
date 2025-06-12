@@ -189,6 +189,25 @@ def lambda_handler(event, context):
             print('query_engine.retrieve.Node0.get_text', r.get_text())
             print('query_engine.retrieve.Node0.metadata', r.metadata)
             
+            json_formatted_context = query_engine._format_context(
+                search_results=results,
+                context_format='json'
+            )
+            print('query_engine.retrieve.json_formatted_context', json_formatted_context)
+            
+            
+            bedrock_xml_formatted_context = query_engine._format_context(
+                search_results=results,
+                context_format='bedrock_xml'
+            )
+            print('query_engine.retrieve.bedrock_xml_formatted_context', bedrock_xml_formatted_context)
+            
+            text_formatted_context = query_engine._format_context(
+                search_results=results,
+                context_format='text'
+            )
+            print('query_engine.retrieve.text_formatted_context', text_formatted_context)
+            
             response = query_engine.query(query)
             
 
