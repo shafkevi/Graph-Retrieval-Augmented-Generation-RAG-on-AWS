@@ -183,155 +183,155 @@ if __name__ == "__main__":
 
 
 
-def lambda_handler(event, context):
-    """Main Lambda handler for GraphRAG inference - Streaming Response"""
+# def lambda_handler(event, context):
+#     """Main Lambda handler for GraphRAG inference - Streaming Response"""
     
-    print(f'GraphRAG Lambda Event: {json.dumps(event)}')
+#     print(f'GraphRAG Lambda Event: {json.dumps(event)}')
     
-    # Parse and validate ID token
-    id_token_result = parse_id_token(event)
+#     # Parse and validate ID token
+#     id_token_result = parse_id_token(event)
     
-    if id_token_result['statusCode'] != 200:
-        return {
-            'statusCode': id_token_result['statusCode'],
-            'headers': {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-                'Access-Control-Allow-Methods': 'OPTIONS,POST,GET'
-            },
-            'body': id_token_result['body']
-        }
+#     if id_token_result['statusCode'] != 200:
+#         return {
+#             'statusCode': id_token_result['statusCode'],
+#             'headers': {
+#                 'Content-Type': 'application/json',
+#                 'Access-Control-Allow-Origin': '*',
+#                 'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+#                 'Access-Control-Allow-Methods': 'OPTIONS,POST,GET'
+#             },
+#             'body': id_token_result['body']
+#         }
     
-    identity_id = id_token_result['identityId']
-    print(f"GraphRAG run on behalf of: {identity_id}")
+#     identity_id = id_token_result['identityId']
+#     print(f"GraphRAG run on behalf of: {identity_id}")
     
-    # Parse request body
-    try:
-        if event.get('isBase64Encoded'):
-            import base64
-            body = json.loads(base64.b64decode(event['body']).decode('utf-8'))
-        else:
-            body = json.loads(event['body']) if isinstance(event['body'], str) else event['body']
+#     # Parse request body
+#     try:
+#         if event.get('isBase64Encoded'):
+#             import base64
+#             body = json.loads(base64.b64decode(event['body']).decode('utf-8'))
+#         else:
+#             body = json.loads(event['body']) if isinstance(event['body'], str) else event['body']
         
-        # Extract parameters
-        query = body.get('query', '')
-        tenant_id=get_tenant_id(identity_id)
-        if not query:
-            return {
-                'statusCode': 400,
-                'headers': {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*',
-                    'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-                    'Access-Control-Allow-Methods': 'OPTIONS,POST,GET'
-                },
-                'body': json.dumps({'error': 'Query is required'})
-            }
+#         # Extract parameters
+#         query = body.get('query', '')
+#         tenant_id=get_tenant_id(identity_id)
+#         if not query:
+#             return {
+#                 'statusCode': 400,
+#                 'headers': {
+#                     'Content-Type': 'application/json',
+#                     'Access-Control-Allow-Origin': '*',
+#                     'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+#                     'Access-Control-Allow-Methods': 'OPTIONS,POST,GET'
+#                 },
+#                 'body': json.dumps({'error': 'Query is required'})
+#             }
         
-        print(f'GraphRAG Query: {query}')
-        print(f'GraphRAG Identity ID: {identity_id}')
+#         print(f'GraphRAG Query: {query}')
+#         print(f'GraphRAG Identity ID: {identity_id}')
         
-        # Execute GraphRAG query - this is the complete workflow
-        try:
-            query_engine = get_query_engine(identity_id)
+#         # Execute GraphRAG query - this is the complete workflow
+#         try:
+#             query_engine = get_query_engine(identity_id)
             
-            print(f"Executing GraphRAG query: {query}")
-            # This performs the complete GraphRAG workflow:
-            # 1. Semantic search in knowledge graph
-            # 2. Context retrieval 
-            # 3. LLM inference with retrieved context
-            # 4. Final response generation
-            # response = query_engine.query(query)
+#             print(f"Executing GraphRAG query: {query}")
+#             # This performs the complete GraphRAG workflow:
+#             # 1. Semantic search in knowledge graph
+#             # 2. Context retrieval 
+#             # 3. LLM inference with retrieved context
+#             # 4. Final response generation
+#             # response = query_engine.query(query)
             
-            # Break apart what the _query_ method does in the query_engine
-            results = query_engine.retrieve(query)
-            # print('query_engine.retrieve',results)
-            # r = results[0]
-            # print('query_engine.retrieve.Node0', r)
-            # print('query_engine.retrieve.Node0.get_content', r.get_content())
-            # print('query_engine.retrieve.Node0.get_score', r.get_score())
-            # print('query_engine.retrieve.Node0.get_text', r.get_text())
-            # print('query_engine.retrieve.Node0.metadata', r.metadata)
+#             # Break apart what the _query_ method does in the query_engine
+#             results = query_engine.retrieve(query)
+#             # print('query_engine.retrieve',results)
+#             # r = results[0]
+#             # print('query_engine.retrieve.Node0', r)
+#             # print('query_engine.retrieve.Node0.get_content', r.get_content())
+#             # print('query_engine.retrieve.Node0.get_score', r.get_score())
+#             # print('query_engine.retrieve.Node0.get_text', r.get_text())
+#             # print('query_engine.retrieve.Node0.metadata', r.metadata)
             
-            # json_formatted_context = query_engine._format_context(
-            #     search_results=results,
-            #     context_format='json'
-            # )
-            # print('query_engine.retrieve.json_formatted_context', json_formatted_context)
-            
-            
-            # bedrock_xml_formatted_context = query_engine._format_context(
-            #     search_results=results,
-            #     context_format='bedrock_xml'
-            # )
-            # print('query_engine.retrieve.bedrock_xml_formatted_context', bedrock_xml_formatted_context)
-            
-            text_formatted_context = query_engine._format_context(
-                search_results=results,
-                context_format='text'
-            )
-            print('query_engine.retrieve.text_formatted_context', text_formatted_context)
+#             # json_formatted_context = query_engine._format_context(
+#             #     search_results=results,
+#             #     context_format='json'
+#             # )
+#             # print('query_engine.retrieve.json_formatted_context', json_formatted_context)
             
             
-            history = body.get('history', [])
-            conversation = [h for h in history]
-            conversation.append({
-                "role": "user",
-                "content": [{"text": 
-                    f"""Use the following context to answer the query at the end: 
-                    <context>{text_formatted_context}<context>
-                    <query>{query}</query>"""
-                }]
-            })
-            print('conversation',conversation)
-            response = bedrock_sync(conversation)
-            print('lambda_handler.bedrock_sync.response', response)
+#             # bedrock_xml_formatted_context = query_engine._format_context(
+#             #     search_results=results,
+#             #     context_format='bedrock_xml'
+#             # )
+#             # print('query_engine.retrieve.bedrock_xml_formatted_context', bedrock_xml_formatted_context)
             
-            return response
+#             text_formatted_context = query_engine._format_context(
+#                 search_results=results,
+#                 context_format='text'
+#             )
+#             print('query_engine.retrieve.text_formatted_context', text_formatted_context)
             
-            response = query_engine.query(query)
-            # Extract the response text
-            response_text = str(response)
-            print(f'query_engine.query.response_text: {response_text}')
-            print(f'query_engine.query.get_formatted_sources: {response.get_formatted_sources()}')
+            
+#             history = body.get('history', [])
+#             conversation = [h for h in history]
+#             conversation.append({
+#                 "role": "user",
+#                 "content": [{"text": 
+#                     f"""Use the following context to answer the query at the end: 
+#                     <context>{text_formatted_context}<context>
+#                     <query>{query}</query>"""
+#                 }]
+#             })
+#             print('conversation',conversation)
+#             response = bedrock_sync(conversation)
+#             print('lambda_handler.bedrock_sync.response', response)
+            
+#             return response
+            
+#             response = query_engine.query(query)
+#             # Extract the response text
+#             response_text = str(response)
+#             print(f'query_engine.query.response_text: {response_text}')
+#             print(f'query_engine.query.get_formatted_sources: {response.get_formatted_sources()}')
             
 
             
-            # Create document metadata indicating this came from GraphRAG
-            document_metadata = [{
-                'content': 'Response generated using GraphRAG knowledge graph traversal and vector search',
-                'metadata': {
-                    'source': 'knowledge_graph',
-                    'type': 'graphrag',
-                    'query': query,
-                    'tenant_id': tenant_id,
-                    'model': RESPONSE_MODEL,
-                    'method': 'traversal_based_search'
-                }
-            }]
+#             # Create document metadata indicating this came from GraphRAG
+#             document_metadata = [{
+#                 'content': 'Response generated using GraphRAG knowledge graph traversal and vector search',
+#                 'metadata': {
+#                     'source': 'knowledge_graph',
+#                     'type': 'graphrag',
+#                     'query': query,
+#                     'tenant_id': tenant_id,
+#                     'model': RESPONSE_MODEL,
+#                     'method': 'traversal_based_search'
+#                 }
+#             }]
             
-            # For streaming response, we need to format it properly
-            # Send metadata first, then the response
-            metadata_prefix = f"_~_{json.dumps(document_metadata)}_~_\n\n"
-            full_response = metadata_prefix + response_text
+#             # For streaming response, we need to format it properly
+#             # Send metadata first, then the response
+#             metadata_prefix = f"_~_{json.dumps(document_metadata)}_~_\n\n"
+#             full_response = metadata_prefix + response_text
             
-            return full_response
+#             return full_response
             
-        except Exception as e:
-            import traceback
-            print(traceback.format_exc())
-            error_msg = f'Error executing GraphRAG query: {str(e)}'
-            print(error_msg)
-            return {
-                'statusCode': 500,
-                'body': json.dumps({'error': error_msg})
-            }
+#         except Exception as e:
+#             import traceback
+#             print(traceback.format_exc())
+#             error_msg = f'Error executing GraphRAG query: {str(e)}'
+#             print(error_msg)
+#             return {
+#                 'statusCode': 500,
+#                 'body': json.dumps({'error': error_msg})
+#             }
         
         
-    except Exception as e:
-        print(f'Error processing GraphRAG request: {e}')
-        return {
-            'statusCode': 500,
-            'body': json.dumps({'error': f'Failed to process GraphRAG request: {str(e)}'})
-        }
+#     except Exception as e:
+#         print(f'Error processing GraphRAG request: {e}')
+#         return {
+#             'statusCode': 500,
+#             'body': json.dumps({'error': f'Failed to process GraphRAG request: {str(e)}'})
+#         }

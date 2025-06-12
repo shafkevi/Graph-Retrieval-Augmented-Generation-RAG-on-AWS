@@ -701,6 +701,7 @@ export class ServerlessRagOnAws extends Stack {
       memorySize: 2048,
       timeout: Duration.seconds(300),
       environment: {
+        AWS_LWA_INVOKE_MODE: 'RESPONSE_STREAM',
         NEPTUNE_GRAPH_ID: neptuneAnalyticsGraph.attrGraphId,
         NEPTUNE_GRAPH_ENDPOINT: neptuneAnalyticsGraph.attrEndpoint,
         stackName: this.stackName,
