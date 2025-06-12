@@ -159,22 +159,29 @@ async def bedrock_stream(conversation, model='us.anthropic.claude-3-7-sonnet-202
 
 @app.post("/")
 def lambda_handler(event, context):
-    conversation = []
-    if event.get('isBase64Encoded'):
-        import base64
-        body = json.loads(base64.b64decode(event['body']).decode('utf-8'))
-    else:
-        body = json.loads(event['body']) if isinstance(event['body'], str) else event['body']
-    
-    # Extract parameters
-    query = body.get('query', '')
-    history = body.get('history', [])
-    conversation = [h for h in history]
-    conversation.append({
-        "role": "user",
-        "content": query
-    })
-    return StreamingResponse(bedrock_stream(conversation), media_type="text/html")
+    print('FASTAPI.lambda_handler')
+    print(event)
+    try:
+        conversation = []
+        if event.get('isBase64Encoded'):
+            import base64
+            body = json.loads(base64.b64decode(event['body']).decode('utf-8'))
+        else:
+            body = json.loads(event['body']) if isinstance(event['body'], str) else event['body']
+        
+        # Extract parameters
+        query = body.get('query', '')
+        history = body.get('history', [])
+        conversation = [h for h in history]
+        conversation.append({
+            "role": "user",
+            "content": query
+        })
+        return StreamingResponse(bedrock_stream(conversation), media_type="text/html")
+
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8080")))
