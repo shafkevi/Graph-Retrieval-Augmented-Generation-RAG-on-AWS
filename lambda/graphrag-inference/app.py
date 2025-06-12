@@ -27,6 +27,9 @@ RESPONSE_MODEL = os.environ.get('RESPONSE_MODEL', 'us.anthropic.claude-3-7-sonne
 # Initialize AWS clients
 cognito_identity = boto3.client('cognito-identity', region_name=aws_region)
 
+# Initialize Bedrock:
+bedrock = boto3.client('bedrock-runtime')
+
 # Initialize GraphRAG components
 NEPTUNE_CONNECTION_INFO = "neptune-graph://"+ NEPTUNE_GRAPH_ID
 
@@ -118,6 +121,67 @@ def parse_id_token(event):
             }),
         }
 
+
+def bedrock_sync(conversation, model='us.anthropic.claude-3-7-sonnet-20250219-v1:0'):
+    response = bedrock.converse(
+        modelId=model,
+        messages=conversation,
+        inferenceConfig={ "maxTokens": 1000, "temperature": 0.0, "topP": 0.9 },
+    )
+    response_body = json.loads(response.get('body').read())
+    print('bedrock_sync.response_body', response_body)
+    return response_body.get('content')[0].get('text') or ""
+
+
+async def bedrock_stream(conversation, model='us.anthropic.claude-3-7-sonnet-20250219-v1:0'):
+    response = bedrock.converse_stream(
+        modelId=model,
+        messages=conversation,
+        inferenceConfig={ "maxTokens": 1000, "temperature": 0.0, "topP": 0.9 },
+    )
+    stream = response.get('body')
+    if stream:
+        for event in stream:
+            chunk = event.get('chunk')
+            if chunk:
+                message = json.loads(chunk.get("bytes").decode())
+                if message['type'] == "content_block_delta":
+                    yield message['delta']['text'] or ""
+                elif message['type'] == "message_stop":
+                    yield "\n"
+
+
+import uvicorn
+from fastapi import FastAPI
+from fastapi.responses import RedirectResponse, StreamingResponse
+app = FastAPI()
+@app.post("/")
+def lambda_handler(event, context):
+    conversation = []
+    if event.get('isBase64Encoded'):
+        import base64
+        body = json.loads(base64.b64decode(event['body']).decode('utf-8'))
+    else:
+        body = json.loads(event['body']) if isinstance(event['body'], str) else event['body']
+    
+    # Extract parameters
+    query = body.get('query', '')
+    history = body.get('history', [])
+    conversation = [h for h in history]
+    conversation.append({
+        "role": "user",
+        "content": query
+    })
+    return StreamingResponse(bedrock_stream(conversation), media_type="text/html")
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8080")))
+
+
+
+
+
+
 def lambda_handler(event, context):
     """Main Lambda handler for GraphRAG inference - Streaming Response"""
     
@@ -181,26 +245,26 @@ def lambda_handler(event, context):
             
             # Break apart what the _query_ method does in the query_engine
             results = query_engine.retrieve(query)
-            print('query_engine.retrieve',results)
-            r = results[0]
-            print('query_engine.retrieve.Node0', r)
-            print('query_engine.retrieve.Node0.get_content', r.get_content())
-            print('query_engine.retrieve.Node0.get_score', r.get_score())
-            print('query_engine.retrieve.Node0.get_text', r.get_text())
-            print('query_engine.retrieve.Node0.metadata', r.metadata)
+            # print('query_engine.retrieve',results)
+            # r = results[0]
+            # print('query_engine.retrieve.Node0', r)
+            # print('query_engine.retrieve.Node0.get_content', r.get_content())
+            # print('query_engine.retrieve.Node0.get_score', r.get_score())
+            # print('query_engine.retrieve.Node0.get_text', r.get_text())
+            # print('query_engine.retrieve.Node0.metadata', r.metadata)
             
-            json_formatted_context = query_engine._format_context(
-                search_results=results,
-                context_format='json'
-            )
-            print('query_engine.retrieve.json_formatted_context', json_formatted_context)
+            # json_formatted_context = query_engine._format_context(
+            #     search_results=results,
+            #     context_format='json'
+            # )
+            # print('query_engine.retrieve.json_formatted_context', json_formatted_context)
             
             
-            bedrock_xml_formatted_context = query_engine._format_context(
-                search_results=results,
-                context_format='bedrock_xml'
-            )
-            print('query_engine.retrieve.bedrock_xml_formatted_context', bedrock_xml_formatted_context)
+            # bedrock_xml_formatted_context = query_engine._format_context(
+            #     search_results=results,
+            #     context_format='bedrock_xml'
+            # )
+            # print('query_engine.retrieve.bedrock_xml_formatted_context', bedrock_xml_formatted_context)
             
             text_formatted_context = query_engine._format_context(
                 search_results=results,
@@ -208,9 +272,24 @@ def lambda_handler(event, context):
             )
             print('query_engine.retrieve.text_formatted_context', text_formatted_context)
             
-            response = query_engine.query(query)
             
-
+            history = body.get('history', [])
+            conversation = [h for h in history]
+            conversation.append({
+                "role": "user",
+                "content": [{"text": 
+                    f"""Use the following context to answer the query at the end: 
+                    <context>{text_formatted_context}<context>
+                    <query>{query}</query>"""
+                }]
+            })
+            print('conversation',conversation)
+            response = bedrock_sync(conversation)
+            print('lambda_handler.bedrock_sync.response', response)
+            
+            return response
+            
+            response = query_engine.query(query)
             # Extract the response text
             response_text = str(response)
             print(f'query_engine.query.response_text: {response_text}')
