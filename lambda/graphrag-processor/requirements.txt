@@ -1,5 +1,4 @@
 anthropic-bedrock==0.8.0
-nltk
 boto3==1.36.1
 botocore==1.36.1
 json2xml==5.0.5
