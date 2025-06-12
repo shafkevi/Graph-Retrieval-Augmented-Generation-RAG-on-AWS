@@ -182,16 +182,22 @@ def lambda_handler(event, context):
             # Break apart what the _query_ method does in the query_engine
             results = query_engine.retrieve(query)
             print('query_engine.retrieve',results)
-        
+            r = results[0]
+            print('query_engine.retrieve.Node0', r)
+            print('query_engine.retrieve.Node0.get_content', r.get_content())
+            print('query_engine.retrieve.Node0.get_score', r.get_score())
+            print('query_engine.retrieve.Node0.get_text', r.get_text())
+            print('query_engine.retrieve.Node0.metadata', r.metadata)
+            
             response = query_engine.query(query)
             
 
             # Extract the response text
             response_text = str(response)
             print(f'query_engine.query.response_text: {response_text}')
+            print(f'query_engine.query.get_formatted_sources: {response.get_formatted_sources()}')
             
-            print('query_engine.query.print_response_stream')
-            response.print_response_stream()
+
             
             # Create document metadata indicating this came from GraphRAG
             document_metadata = [{
@@ -222,6 +228,7 @@ def lambda_handler(event, context):
                 'statusCode': 500,
                 'body': json.dumps({'error': error_msg})
             }
+        
         
     except Exception as e:
         print(f'Error processing GraphRAG request: {e}')
