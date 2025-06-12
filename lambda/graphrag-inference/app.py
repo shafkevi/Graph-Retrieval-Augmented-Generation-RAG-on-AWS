@@ -37,7 +37,7 @@ from llama_index.core.base.response.schema import Response, RESPONSE_TYPE
 from llama_index.core.schema import QueryBundle
 class QueryEngine(LexicalGraphQueryEngine):
     print('Init Custom QueryEngine')
-    def _query(self, query_bundle: QueryBundle) -> RESPONSE_TYPE:
+    def special_query(self, query_bundle: QueryBundle) -> RESPONSE_TYPE:
         """
         Executes a query against the system and processes the results to generate a
         final response. The method applies embedding on the query, retrieves relevant
@@ -256,7 +256,7 @@ def lambda_handler(event, context):
             # 2. Context retrieval 
             # 3. LLM inference with retrieved context
             # 4. Final response generation
-            response = query_engine.query(query)
+            response = query_engine.special_query(query)
             
             # Break apart what the _query_ method does in the query_engine
             # query_bundle = to_embedded_query(query_bundle, GraphRAGConfig.embed_model)
