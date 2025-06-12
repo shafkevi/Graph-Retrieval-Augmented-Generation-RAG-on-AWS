@@ -6,6 +6,7 @@ import urllib.parse
 import boto3
 from graphrag_toolkit.lexical_graph.storage import VectorStoreFactory, GraphStoreFactory
 from graphrag_toolkit.lexical_graph import LexicalGraphQueryEngine
+
 #import nest_asyncio
 
 # Apply nest_asyncio for Lambda environment
@@ -29,6 +30,83 @@ cognito_identity = boto3.client('cognito-identity', region_name=aws_region)
 # Initialize GraphRAG components
 NEPTUNE_CONNECTION_INFO = "neptune-graph://"+ NEPTUNE_GRAPH_ID
 
+import time
+from graphrag_toolkit.lexical_graph.config import GraphRAGConfig
+from graphrag_toolkit.lexical_graph.storage.vector import to_embedded_query
+from llama_index.core.base.response.schema import Response, RESPONSE_TYPE
+from llama_index.core.schema import QueryBundle
+class QueryEngine(LexicalGraphQueryEngine):
+    print('Init Custom QueryEngine')
+    def _query(self, query_bundle: QueryBundle) -> RESPONSE_TYPE:
+        """
+        Executes a query against the system and processes the results to generate a
+        final response. The method applies embedding on the query, retrieves relevant
+        data, processes the data through registered post-processors, formats the
+        context, and generates a response.
+
+        Args:
+            query_bundle: An instance of QueryBundle containing the query string and
+                additional data required for the query.
+
+        Returns:
+            Response: An instance of the Response class. It contains the generated
+                response, the source nodes used for building the response, and
+                metadata such as timing details and applied configurations.
+
+        Raises:
+            Exception: If any error occurs during query processing, it is logged and
+                re-raised.
+        """
+        try:
+
+            start = time.time()
+            print('CustomQueryEngine._query.to_embedded_query')
+            query_bundle = to_embedded_query(query_bundle, GraphRAGConfig.embed_model)
+            
+            print('CustomQueryEngine._query.retrieve')
+            results = self.retriever.retrieve(query_bundle)
+
+            end_retrieve = time.time()
+
+            for post_processor in self.post_processors:
+                results = post_processor.postprocess_nodes(results, query_bundle)
+
+            end_postprocessing = time.time()
+
+            print('CustomQueryEngine._query._format_context')
+            context = self._format_context(results, self.context_format)
+            print('CustomQueryEngine._query._generate_response')
+            answer = self._generate_response(query_bundle, context)
+
+            end = time.time()
+
+            retrieve_ms = (end_retrieve - start) * 1000
+            postprocess_ms = (end_postprocessing - end_retrieve) * 1000
+            answer_ms = (end - end_retrieve) * 1000
+            total_ms = (end - start) * 1000
+
+            metadata = {
+                'retrieve_ms': retrieve_ms,
+                'postprocessing_ms': postprocess_ms,
+                'answer_ms': answer_ms,
+                'total_ms': total_ms,
+                'context_format': self.context_format,
+                'retriever': f'{type(self.retriever).__name__}: {self.retriever.__dict__}',
+                'query': query_bundle.query_str,
+                'postprocessors': [type(p).__name__ for p in self.post_processors],
+                'context': context,
+                'num_source_nodes': len(results)
+            }
+
+            return Response(
+                response=answer,
+                source_nodes=results,
+                metadata=metadata
+            )
+        except Exception as e:
+            logger.exception('Error in query processing')
+            raise
+
 def get_vector_and_graph_stores():
     """Initialize vector and graph stores"""
     vector_store = VectorStoreFactory.for_vector_store(NEPTUNE_CONNECTION_INFO)
@@ -49,7 +127,7 @@ def get_query_engine(cognito_sub):
     print(f"Original cognito_sub: {cognito_sub}")
     print(f"Generated tenant_id for query: {tenant_id}")
     # Use traversal_based_search with tenant_id for multitenancy
-    query_engine = LexicalGraphQueryEngine.for_traversal_based_search(
+    query_engine = QueryEngine.for_traversal_based_search(
         graph_store, 
         vector_store,
         tenant_id=tenant_id,  # Use cognito_sub as tenant_id for multitenancy
@@ -57,6 +135,8 @@ def get_query_engine(cognito_sub):
     )
     
     return query_engine
+
+
 
 def parse_id_token(event):
     """Parse and validate the ID token from the request"""
@@ -177,6 +257,9 @@ def lambda_handler(event, context):
             # 3. LLM inference with retrieved context
             # 4. Final response generation
             response = query_engine.query(query)
+            
+            # Break apart what the _query_ method does in the query_engine
+            # query_bundle = to_embedded_query(query_bundle, GraphRAGConfig.embed_model)
             
             # Extract the response text
             response_text = str(response)
