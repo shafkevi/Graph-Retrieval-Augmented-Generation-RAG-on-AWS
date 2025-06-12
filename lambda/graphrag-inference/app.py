@@ -182,12 +182,16 @@ def lambda_handler(event, context):
             # Break apart what the _query_ method does in the query_engine
             results = query_engine.retrieve(query)
             print('query_engine.retrieve',results)
-            return results
+        
+            response = query_engine.query(query)
             
 
             # Extract the response text
             response_text = str(response)
-            print(f'GraphRAG response: {response_text}')
+            print(f'query_engine.query.response_text: {response_text}')
+            
+            print('query_engine.query.print_response_stream')
+            response.print_response_stream()
             
             # Create document metadata indicating this came from GraphRAG
             document_metadata = [{
@@ -210,6 +214,8 @@ def lambda_handler(event, context):
             return full_response
             
         except Exception as e:
+            import traceback
+            print(traceback.format_exc())
             error_msg = f'Error executing GraphRAG query: {str(e)}'
             print(error_msg)
             return {
