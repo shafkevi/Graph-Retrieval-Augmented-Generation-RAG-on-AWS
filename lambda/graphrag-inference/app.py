@@ -4,7 +4,8 @@ import jwt
 import hashlib
 import urllib.parse
 import boto3
-import logger
+import logging
+logger = logging.getLogger(__name__)
 from graphrag_toolkit.lexical_graph.storage import VectorStoreFactory, GraphStoreFactory
 from graphrag_toolkit.lexical_graph import LexicalGraphQueryEngine
 
