@@ -19,7 +19,7 @@ from graphrag_toolkit.lexical_graph.storage import VectorStoreFactory, GraphStor
 from graphrag_toolkit.lexical_graph import LexicalGraphIndex
 #from graphrag_toolkit.lexical_graph.indexing.build import Checkpoint
 from llama_index.core import SimpleDirectoryReader
-from llama_index.readers.file import PyMuPDFReader
+from llama_index.readers.file import PDFReader
 
 #import nest_asyncio
 
@@ -199,7 +199,7 @@ def prepare_document_for_processing(file_path,local_dir_path):
     print("received file path is" + file_path)
     print("file extension is " + file_extension)
     if file_extension == '.pdf':
-        parser = PyMuPDFReader()
+        parser = PDFReader()
         file_extractor = {".pdf": parser}
         reader=SimpleDirectoryReader(local_dir_path, file_extractor=file_extractor)
         documents = reader.load_data()
