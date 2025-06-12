@@ -128,9 +128,10 @@ def bedrock_sync(conversation, model='us.anthropic.claude-3-7-sonnet-20250219-v1
         messages=conversation,
         inferenceConfig={ "maxTokens": 1000, "temperature": 0.0, "topP": 0.9 },
     )
-    response_body = json.loads(response.get('body').read())
+    print('bedrock_sync.response', response)
+    response_body = response["output"]["message"]["content"][0]["text"]
     print('bedrock_sync.response_body', response_body)
-    return response_body.get('content')[0].get('text') or ""
+    return response_body or ""
 
 
 async def bedrock_stream(conversation, model='us.anthropic.claude-3-7-sonnet-20250219-v1:0'):
