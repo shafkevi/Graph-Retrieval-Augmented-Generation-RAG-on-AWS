@@ -159,7 +159,7 @@ async def bedrock_stream(conversation, model='us.anthropic.claude-3-7-sonnet-202
 
 
 @app.post("/")
-def lambda_handler(event, context):
+async def lambda_handler(event, context):
     print('FASTAPI.lambda_handler')
     print(event)
     try:
