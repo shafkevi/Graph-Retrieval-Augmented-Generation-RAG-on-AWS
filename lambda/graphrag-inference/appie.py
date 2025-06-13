@@ -136,19 +136,15 @@ async def converse_bedrock_stream(conversation, model='us.anthropic.claude-3-7-s
     print('converse_bedrock_stream.response',response)
     stream = response.get('stream')
     if stream:
+        print('converse_bedrock_stream.stream', stream)
         for event in stream:
             print('converse_bedrock_stream.event', event)
-            chunk = event.get("chunk")
-            print('converse_bedrock_stream.chunk', chunk)
-            if chunk:
-                message = json.loads(chunk.get("bytes").decode())
-                print('converse_bedrock_stream.message', message)
-                if message["type"] == "content_block_delta":
-                    yield message["delta"]["text"] or ""
-                    await asyncio.sleep(0.01)
-                elif message["type"] == "message_stop":
-                    yield "\n"
-                    await asyncio.sleep(0.01)
+            if "contentBlockDelta" in event:
+                yield event["contentBlockDelta"]["delta"]["text"] or ""
+                await asyncio.sleep(0.01)
+            if "messageStop" in event:
+                yield "\n"
+                await asyncio.sleep(0.01)
 
 
 
