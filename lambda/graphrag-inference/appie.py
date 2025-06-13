@@ -206,7 +206,7 @@ async def lambda_handler(request: QueryRequest):
         conversation = [h for h in history]
         conversation.append({
             "role": "user",
-            "content": request.query
+            "content": [{"text":request.query}]
         })
         return StreamingResponse(
             converse_bedrock_stream(
