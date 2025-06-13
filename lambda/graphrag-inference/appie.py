@@ -2,6 +2,7 @@ import os
 import boto3
 import json
 
+import traceback
 import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
@@ -200,6 +201,23 @@ async def lambda_handler(request: QueryRequest):
     tenant_id = get_tenant_id(identity_id)
         
     try:
+        query_engine = get_query_engine(identity_id)
+        print(f"Executing GraphRAG query: {request.query}")
+        results = query_engine.retrieve(request.query)
+        
+        # This needs lots of TLC to correctly format the output, but we're going raw to start
+        context = query_engine._format_context(
+            search_results=results,
+            context_format='text'
+        )            
+        print('query_engine.retrieve.text_formatted_context', context)
+
+    except Exception as e:
+        print('Graph Query Exception!', e)
+        print(traceback.format_exc())
+        context = 'No context found. If you confidently know the answer, answer, otherwise apologize that you do not know about the topic.'
+    
+    try:
         conversation = []
         
         # Extract parameter
@@ -207,7 +225,11 @@ async def lambda_handler(request: QueryRequest):
         conversation = [h for h in history]
         conversation.append({
             "role": "user",
-            "content": [{"text":request.query}]
+            "content": [{"text": 
+                f"""Use the following context to answer the query at the end: 
+                <context>{context}<context>
+                <query>{request.query}</query>"""
+            }]
         })
         print('conversation',conversation)
         print('request.model', request.model)
@@ -224,8 +246,7 @@ async def lambda_handler(request: QueryRequest):
         )
 
     except Exception as e:
-        import traceback
-        print('Exception!', e)
+        print('Bedrock Streaming Exception!', e)
         print(traceback.format_exc())
 
 
