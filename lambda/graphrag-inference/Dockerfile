@@ -1,13 +1,20 @@
-FROM public.ecr.aws/lambda/python:3.10
-# COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:0.9.1 /lambda-adapter /opt/extensions/lambda-adapter
+# FROM public.ecr.aws/lambda/python:3.10
+
+# COPY requirements.txt ./
+
+# RUN python3.10 -m pip install -r requirements.txt -t .
+
+# COPY app.py ./
+
+# CMD ["app.lambda_handler"]
 
 
-COPY requirements.txt ./
+# Streaming Things
+FROM public.ecr.aws/docker/library/python:3.12.0-slim-bullseye
+COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:0.9.1 /lambda-adapter /opt/extensions/lambda-adapter
 
-RUN python3.10 -m pip install -r requirements.txt -t .
+COPY appie.py ./
+ADD . .
+RUN pip install -r requirements.txt
 
-COPY app.py ./
-
-CMD ["app.lambda_handler"]
-
-# CMD ["python", "app.py"]
+CMD ["python", "appie.py"]
