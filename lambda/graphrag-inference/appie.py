@@ -37,10 +37,6 @@ SYSTEM = os.environ.get("SYSTEM", "You are a helpful assistant.")
 app = FastAPI()
 bedrock = boto3.Session().client("bedrock-runtime")
 
-# Define the request model
-class QueryRequest(BaseModel):
-    query: str
-
 
 def get_vector_and_graph_stores():
     """Initialize vector and graph stores"""
@@ -169,12 +165,23 @@ async def converse_bedrock_stream(conversation, model='us.anthropic.claude-3-7-s
 #         },
 #     )
 
+
+# Define the request model
+class QueryRequest(BaseModel):
+    query: str
+    idToken: str
+    history: list = []
+    model: str = BEDROCK_MODEL
+    promptOverride: dict = {}
+    strategy: str = "graphrag"
+
+
 @app.get("/")
 @app.post("/")
 # async def lambda_handler(body, context):
-async def lambda_handler(query, idToken, history=[], model=BEDROCK_MODEL, promptOverrid={}, strategy="graphrag"):
+async def lambda_handler(request: QueryRequest):
     print('FASTAPI.lambda_handler')
-    id_token_result = parse_id_token(idToken)
+    id_token_result = parse_id_token(request.idToken)
     
     if id_token_result['statusCode'] != 200:
         return {
@@ -195,14 +202,17 @@ async def lambda_handler(query, idToken, history=[], model=BEDROCK_MODEL, prompt
         conversation = []
         
         # Extract parameter
-        history = history or []
+        history = request.history or []
         conversation = [h for h in history]
         conversation.append({
             "role": "user",
-            "content": query
+            "content": request.query
         })
         return StreamingResponse(
-            converse_bedrock_stream(conversation),
+            converse_bedrock_stream(
+                conversation, 
+                model=request.model
+            ),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
