@@ -694,7 +694,7 @@ export class ServerlessRagOnAws extends Stack {
 // GraphRAG Inference Lambda function - UPDATED TO PYTHON DOCKER
     const graphRagInferenceLambda = new lambda.DockerImageFunction(this, 'graphRagInferenceLambda', {
       code: lambda.DockerImageCode.fromImageAsset('./lambda/graphrag-inference', {
-        cmd: ["app.lambda_handler"],  // Changed from "index.handler" to "app.lambda_handler"
+        // cmd: ["app.lambda_handler"],  // Changed from "index.handler" to "app.lambda_handler"
         file: 'Dockerfile',
       }),
       architecture: lambda.Architecture.X86_64,
