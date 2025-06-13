@@ -127,6 +127,7 @@ def parse_id_token(id_token):
 
 #  Streaming stuff
 async def converse_bedrock_stream(conversation, model='us.anthropic.claude-3-7-sonnet-20250219-v1:0'):
+    print('converse_bedrock_stream.STARTING!')
     response = bedrock.converse_stream(
         modelId=model,
         messages=conversation,
@@ -212,6 +213,7 @@ async def lambda_handler(request: QueryRequest):
             "content": [{"text":request.query}]
         })
         print('conversation',conversation)
+        print('request.model', request.model)
         return StreamingResponse(
             converse_bedrock_stream(
                 conversation, 
