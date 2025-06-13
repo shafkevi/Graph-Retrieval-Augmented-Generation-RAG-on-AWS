@@ -134,9 +134,10 @@ async def converse_bedrock_stream(conversation, model='us.anthropic.claude-3-7-s
         inferenceConfig={ "maxTokens": 1000, "temperature": 0.0, "topP": 0.9 },
     )
     print('converse_bedrock_stream.response',response)
-    stream = response.get('body')
+    stream = response.get('stream')
     if stream:
         for event in stream:
+            print('converse_bedrock_stream.event', event)
             chunk = event.get("chunk")
             print('converse_bedrock_stream.chunk', chunk)
             if chunk:
