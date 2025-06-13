@@ -132,12 +132,15 @@ async def converse_bedrock_stream(conversation, model='us.anthropic.claude-3-7-s
         messages=conversation,
         inferenceConfig={ "maxTokens": 1000, "temperature": 0.0, "topP": 0.9 },
     )
+    print('converse_bedrock_stream.response',response)
     stream = response.get('body')
     if stream:
         for event in stream:
             chunk = event.get("chunk")
+            print('converse_bedrock_stream.chunk', chunk)
             if chunk:
                 message = json.loads(chunk.get("bytes").decode())
+                print('converse_bedrock_stream.message', message)
                 if message["type"] == "content_block_delta":
                     yield message["delta"]["text"] or ""
                     await asyncio.sleep(0.01)
@@ -208,6 +211,7 @@ async def lambda_handler(request: QueryRequest):
             "role": "user",
             "content": [{"text":request.query}]
         })
+        print('conversation',conversation)
         return StreamingResponse(
             converse_bedrock_stream(
                 conversation, 
