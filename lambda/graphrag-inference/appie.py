@@ -71,11 +71,9 @@ def get_query_engine(cognito_sub):
     
     return query_engine
 
-def parse_id_token(event):
+def parse_id_token(id_token):
     """Parse and validate the ID token from the request"""
     try:
-        body = json.loads(event['body']) if isinstance(event['body'], str) else event['body']
-        id_token = body.get('idToken')
         
         if not id_token:
             return {
@@ -173,20 +171,31 @@ async def converse_bedrock_stream(conversation, model='us.anthropic.claude-3-7-s
 
 @app.get("/")
 @app.post("/")
-async def lambda_handler(event, context):
+# async def lambda_handler(body, context):
+async def lambda_handler(query, idToken, history=[], model=BEDROCK_MODEL, promptOverrid={}, strategy="graphrag"):
     print('FASTAPI.lambda_handler')
-    print(event)
+    id_token_result = parse_id_token(idToken)
+    
+    if id_token_result['statusCode'] != 200:
+        return {
+            'statusCode': id_token_result['statusCode'],
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+                'Access-Control-Allow-Methods': 'OPTIONS,POST,GET'
+            },
+            'body': id_token_result['body']
+        }
+    identity_id = id_token_result['identityId']
+    print(f"GraphRAG run on behalf of: {identity_id}")
+    tenant_id = get_tenant_id(identity_id)
+        
     try:
         conversation = []
-        if event.get('isBase64Encoded'):
-            import base64
-            body = json.loads(base64.b64decode(event['body']).decode('utf-8'))
-        else:
-            body = json.loads(event['body']) if isinstance(event['body'], str) else event['body']
         
-        # Extract parameters
-        query = body.get('query', '')
-        history = body.get('history', [])
+        # Extract parameter
+        history = history or []
         conversation = [h for h in history]
         conversation.append({
             "role": "user",
