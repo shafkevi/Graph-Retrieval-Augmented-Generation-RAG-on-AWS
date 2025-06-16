@@ -185,6 +185,10 @@ async def lambda_handler(request: QueryRequest):
         query_engine = get_query_engine(identity_id)
         print(f"Executing GraphRAG query: {request.query}")
         results = query_engine.retrieve(request.query)
+        try:
+            print('GraphRAQQuery.results(JSON)', json.dumps(results))
+        except:
+            print('GraphRAQQuery.results(RAW)', results)
         
         # This needs lots of TLC to correctly format the output, but we're going raw to start
         context = query_engine._format_context(
