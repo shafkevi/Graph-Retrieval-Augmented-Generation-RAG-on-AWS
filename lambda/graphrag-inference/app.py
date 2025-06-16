@@ -1,17 +1,20 @@
 import os
+import boto3
 import json
+
+import traceback
+import uvicorn
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+import asyncio
+
 import jwt
 import hashlib
 import urllib.parse
-import boto3
 from graphrag_toolkit.lexical_graph.storage import VectorStoreFactory, GraphStoreFactory
 from graphrag_toolkit.lexical_graph import LexicalGraphQueryEngine
-#import nest_asyncio
-
-# Apply nest_asyncio for Lambda environment
-#nest_asyncio.apply()
-
-# Set logging configuration
+from graphrag_toolkit.lexical_graph.storage.vector import to_embedded_query
 
 # Set up environment variables
 aws_region = os.environ.get('AWS_REGION', 'us-east-1')
@@ -22,12 +25,19 @@ embeddingModel = os.environ.get('EMBEDDING_MODEL')
 USER_POOL_ID = os.environ.get('USER_POOL_ID')
 IDENTITY_POOL_ID = os.environ.get('IDENTITY_POOL_ID')
 RESPONSE_MODEL = os.environ.get('RESPONSE_MODEL', 'us.anthropic.claude-3-7-sonnet-20250219-v1:0')  # Default model for GraphRAG
-
+BEDROCK_MODEL = os.environ.get("BEDROCK_MODEL", "anthropic.claude-3-haiku-20240307-v1:0")
 # Initialize AWS clients
 cognito_identity = boto3.client('cognito-identity', region_name=aws_region)
 
 # Initialize GraphRAG components
 NEPTUNE_CONNECTION_INFO = "neptune-graph://"+ NEPTUNE_GRAPH_ID
+
+
+SYSTEM = os.environ.get("SYSTEM", "You are a helpful assistant.")
+
+app = FastAPI()
+bedrock = boto3.Session().client("bedrock-runtime")
+
 
 def get_vector_and_graph_stores():
     """Initialize vector and graph stores"""
@@ -58,11 +68,9 @@ def get_query_engine(cognito_sub):
     
     return query_engine
 
-def parse_id_token(event):
+def parse_id_token(id_token):
     """Parse and validate the ID token from the request"""
     try:
-        body = json.loads(event['body']) if isinstance(event['body'], str) else event['body']
-        id_token = body.get('idToken')
         
         if not id_token:
             return {
@@ -117,13 +125,46 @@ def parse_id_token(event):
             }),
         }
 
-def lambda_handler(event, context):
-    """Main Lambda handler for GraphRAG inference - Streaming Response"""
-    
-    print(f'GraphRAG Lambda Event: {json.dumps(event)}')
-    
-    # Parse and validate ID token
-    id_token_result = parse_id_token(event)
+
+#  Streaming stuff
+async def converse_bedrock_stream(conversation, model='us.anthropic.claude-3-7-sonnet-20250219-v1:0'):
+    print('converse_bedrock_stream.STARTING!')
+    try:
+        response = bedrock.converse_stream(
+            modelId=model,
+            messages=conversation,
+            inferenceConfig={ "maxTokens": 1000, "temperature": 0.0, "topP": 0.9 },
+        )
+        stream = response.get('stream')
+        if stream:
+            for event in stream:
+                if "contentBlockDelta" in event:
+                    yield event["contentBlockDelta"]["delta"]["text"] or ""
+                    await asyncio.sleep(0.01)
+                if "messageStop" in event:
+                    yield "\n"
+                    await asyncio.sleep(0.01)
+    except Exception as e:
+        print('Something went wrong streaming',e)
+        print(traceback.format_exc())
+
+
+# Define the request model
+class QueryRequest(BaseModel):
+    query: str
+    idToken: str
+    history: list = []
+    model: str = BEDROCK_MODEL
+    promptOverride: dict = {}
+    strategy: str = "graphrag"
+
+
+@app.get("/")
+@app.post("/")
+# async def lambda_handler(body, context):
+async def lambda_handler(request: QueryRequest):
+    print('FASTAPI.lambda_handler')
+    id_token_result = parse_id_token(request.idToken)
     
     if id_token_result['statusCode'] != 200:
         return {
@@ -136,83 +177,63 @@ def lambda_handler(event, context):
             },
             'body': id_token_result['body']
         }
-    
     identity_id = id_token_result['identityId']
     print(f"GraphRAG run on behalf of: {identity_id}")
-    
-    # Parse request body
+    tenant_id = get_tenant_id(identity_id)
+        
     try:
-        if event.get('isBase64Encoded'):
-            import base64
-            body = json.loads(base64.b64decode(event['body']).decode('utf-8'))
-        else:
-            body = json.loads(event['body']) if isinstance(event['body'], str) else event['body']
-        
-        # Extract parameters
-        query = body.get('query', '')
-        tenant_id=get_tenant_id(identity_id)
-        if not query:
-            return {
-                'statusCode': 400,
-                'headers': {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*',
-                    'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-                    'Access-Control-Allow-Methods': 'OPTIONS,POST,GET'
-                },
-                'body': json.dumps({'error': 'Query is required'})
-            }
-        
-        print(f'GraphRAG Query: {query}')
-        print(f'GraphRAG Identity ID: {identity_id}')
-        
-        # Execute GraphRAG query - this is the complete workflow
+        query_engine = get_query_engine(identity_id)
+        print(f"Executing GraphRAG query: {request.query}")
+        results = query_engine.retrieve(request.query)
         try:
-            query_engine = get_query_engine(identity_id)
-            
-            print(f"Executing GraphRAG query: {query}")
-            # This performs the complete GraphRAG workflow:
-            # 1. Semantic search in knowledge graph
-            # 2. Context retrieval 
-            # 3. LLM inference with retrieved context
-            # 4. Final response generation
-            response = query_engine.query(query)
-            
-            # Extract the response text
-            response_text = str(response)
-            print(f'GraphRAG response: {response_text}')
-            
-            # Create document metadata indicating this came from GraphRAG
-            document_metadata = [{
-                'content': 'Response generated using GraphRAG knowledge graph traversal and vector search',
-                'metadata': {
-                    'source': 'knowledge_graph',
-                    'type': 'graphrag',
-                    'query': query,
-                    'tenant_id': tenant_id,
-                    'model': RESPONSE_MODEL,
-                    'method': 'traversal_based_search'
-                }
-            }]
-            
-            # For streaming response, we need to format it properly
-            # Send metadata first, then the response
-            metadata_prefix = f"_~_{json.dumps(document_metadata)}_~_\n\n"
-            full_response = metadata_prefix + response_text
-            
-            return full_response
-            
-        except Exception as e:
-            error_msg = f'Error executing GraphRAG query: {str(e)}'
-            print(error_msg)
-            return {
-                'statusCode': 500,
-                'body': json.dumps({'error': error_msg})
-            }
+            print('GraphRAQQuery.results(JSON)', json.dumps(results))
+        except:
+            print('GraphRAQQuery.results(RAW)', results)
         
+        # This needs lots of TLC to correctly format the output, but we're going raw to start
+        context = query_engine._format_context(
+            search_results=results,
+            context_format='text'
+        )            
+        print('query_engine.retrieve.text_formatted_context', context)
+
     except Exception as e:
-        print(f'Error processing GraphRAG request: {e}')
-        return {
-            'statusCode': 500,
-            'body': json.dumps({'error': f'Failed to process GraphRAG request: {str(e)}'})
-        }
+        print('Graph Query Exception!', e)
+        print(traceback.format_exc())
+        context = 'No context found. If you confidently know the answer, answer, otherwise apologize that you do not know about the topic.'
+    
+    try:
+        conversation = []
+        
+        # Extract parameter
+        history = request.history or []
+        conversation = [h for h in history]
+        conversation.append({
+            "role": "user",
+            "content": [{"text": 
+                f"""Use the following context to answer the query at the end: 
+                <context>{context}<context>
+                <query>{request.query}</query>"""
+            }]
+        })
+        print('conversation',conversation)
+        print('request.model', request.model)
+        return StreamingResponse(
+            converse_bedrock_stream(
+                conversation, 
+                model=request.model
+            ),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+            }
+        )
+
+    except Exception as e:
+        print('Bedrock Streaming Exception!', e)
+        print(traceback.format_exc())
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8080")))

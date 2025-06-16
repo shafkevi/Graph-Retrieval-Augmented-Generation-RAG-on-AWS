@@ -2,6 +2,10 @@ PyJWT==2.8.0
 anthropic-bedrock==0.8.0
 boto3==1.36.1
 botocore==1.36.1
+
+# Streaming things
+fastapi==0.109.2
+
 json2xml==5.0.5
 llama-index-core==0.12.37
 llama-index-embeddings-bedrock==0.5.0
@@ -9,9 +13,18 @@ llama-index-llms-anthropic==0.6.19
 llama-index-llms-bedrock-converse==0.6.0
 lru-dict==1.3.0
 pipe==2.2
+
+# Streaming things
+pydantic==2.8.0
+pydantic_core==2.20.0
+
 python-dotenv==1.0.1
 smart_open==7.1.0
 spacy==3.7.5
 tfidf_matcher==0.3.0
+
+# Streaming things
+uvicorn==0.23.2
+
 https://github.com/awslabs/graphrag-toolkit/archive/refs/tags/v3.7.1.zip#subdirectory=lexical-graph
 

@@ -694,13 +694,14 @@ export class ServerlessRagOnAws extends Stack {
 // GraphRAG Inference Lambda function - UPDATED TO PYTHON DOCKER
     const graphRagInferenceLambda = new lambda.DockerImageFunction(this, 'graphRagInferenceLambda', {
       code: lambda.DockerImageCode.fromImageAsset('./lambda/graphrag-inference', {
-        cmd: ["app.lambda_handler"],  // Changed from "index.handler" to "app.lambda_handler"
+        // cmd: ["app.lambda_handler"],  // Changed from "index.handler" to "app.lambda_handler"
         file: 'Dockerfile',
       }),
       architecture: lambda.Architecture.X86_64,
       memorySize: 2048,
       timeout: Duration.seconds(300),
       environment: {
+        AWS_LWA_INVOKE_MODE: 'RESPONSE_STREAM',
         NEPTUNE_GRAPH_ID: neptuneAnalyticsGraph.attrGraphId,
         NEPTUNE_GRAPH_ENDPOINT: neptuneAnalyticsGraph.attrEndpoint,
         stackName: this.stackName,
